@@ -4,3 +4,7 @@ dist/
 __pycache__/
 *.spec
 .pytest_cache/
+.pytest_tmp/
+/DIP_Midterm_*.zip
+/docs/
+/README.pdf
