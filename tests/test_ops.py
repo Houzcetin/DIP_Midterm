@@ -27,7 +27,7 @@ def _assert_result(op, source):
     assert not np.shares_memory(result, source)
     np.testing.assert_array_equal(source, before)
     expected_channels = 1 if source.ndim == 2 else 3
-    if op.id in {"to_grayscale", "laplacian", "sobel", "threshold", "canny"}:
+    if op.id in {"to_grayscale", "laplacian", "sobel", "threshold", "canny", "spectrum"}:
         expected_channels = 1
     elif op.id == "sepia":
         expected_channels = 3
@@ -62,11 +62,12 @@ def test_registry_schema():
     expected = {"to_grayscale", "flip", "rotate90", "rotate", "scale", "translate", "shear",
                 "contrast_stretch", "gamma", "negative", "box", "gaussian", "median",
                 "laplacian", "sobel", "equalize", "threshold", "erode", "dilate", "opening",
-                "closing", "clahe", "unsharp", "canny", "add_noise", "sepia", "bilateral"}
+                "closing", "clahe", "unsharp", "canny", "add_noise", "sepia", "bilateral",
+                "spectrum", "frequency_filter"}
     assert {op.id for op in OPERATIONS} == expected
     assert len(OPERATIONS) == len(expected)
     groups = {"A Basics", "B Affine", "C Intensity", "D Spatial Filters",
-              "E Histogram", "F Morphology", "Extras"}
+              "E Histogram", "F Morphology", "Extras", "G Frequency"}
     for op in OPERATIONS:
         assert get_op(op.id) is op
         assert op.group in groups

@@ -15,7 +15,7 @@ from ops.registry import OPERATIONS, OperationSpec, ParamSpec
 
 GROUPS = (
     "A Basics", "B Affine", "C Intensity", "D Spatial Filters",
-    "E Histogram", "F Morphology", "Extras",
+    "E Histogram", "F Morphology", "Extras", "G Frequency",
 )
 
 CHOICE_LABELS = {
@@ -24,6 +24,13 @@ CHOICE_LABELS = {
     "global": "Global (t)",
     "otsu": "Otsu (auto)",
     "salt_pepper": "Salt & pepper",
+    "lowpass": "Low-pass",
+    "highpass": "High-pass",
+    "bandpass": "Band-pass",
+    "bandstop": "Band-stop",
+    "ideal": "Ideal",
+    "gaussian": "Gaussian",
+    "butterworth": "Butterworth",
 }
 
 
@@ -31,6 +38,7 @@ class OpsPanel(QWidget):
     """Expose the operation forms and their preview and apply signals."""
 
     previewRequested = Signal(str, dict)
+    paramsChanged = Signal(str)
     applyRequested = Signal(str, dict)
     previewCancelled = Signal()
     resetRequested = Signal()
@@ -39,6 +47,7 @@ class OpsPanel(QWidget):
         super().__init__()
         self.setMinimumWidth(300)
 
+        self._param_readers = {}
         self._pending_preview = None
         self._preview_timer = QTimer(self)
         self._preview_timer.setSingleShot(True)
@@ -52,6 +61,10 @@ class OpsPanel(QWidget):
         for group in GROUPS:
             self.toolbox.addItem(self._group_page(group), group)
         self.toolbox.currentChanged.connect(self._page_changed)
+
+    def current_params(self, op_id: str) -> dict:
+        """Read the current control values for an operation by its registry ID."""
+        return {name: read() for name, read in self._param_readers[op_id].items()}
 
     def _group_page(self, group):
         page = QWidget()
@@ -97,13 +110,13 @@ class OpsPanel(QWidget):
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         layout.addLayout(form)
         readers = {}
+        self._param_readers[op.id] = readers
 
-        def read_params():
-            return {name: read() for name, read in readers.items()}
-
-        def schedule_preview(*_):
-            self._pending_preview = (op.id, read_params())
-            self._preview_timer.start()
+        def params_changed(*_):
+            if op.live:
+                self._pending_preview = (op.id, self.current_params(op.id))
+                self._preview_timer.start()
+            self.paramsChanged.emit(op.id)
 
         for param in op.params:
             control, read, changed = self._parameter_control(param)
@@ -112,11 +125,10 @@ class OpsPanel(QWidget):
             control.setToolTip(param.tooltip)
             form.addRow(label, control)
             readers[param.name] = read
-            if op.live:
-                changed.connect(schedule_preview)
+            changed.connect(params_changed)
 
         apply = QPushButton("Apply")
-        apply.clicked.connect(lambda: self.applyRequested.emit(op.id, read_params()))
+        apply.clicked.connect(lambda: self.applyRequested.emit(op.id, self.current_params(op.id)))
         layout.addWidget(apply, alignment=Qt.AlignmentFlag.AlignRight)
         return box
 

@@ -9,10 +9,10 @@ from typing import Callable, Literal
 
 import numpy as np
 
-from . import affine, basics, extras, filters, histogram, intensity, morphology
+from . import affine, basics, extras, filters, frequency, histogram, intensity, morphology
 
 Group = Literal["A Basics", "B Affine", "C Intensity", "D Spatial Filters",
-                "E Histogram", "F Morphology", "Extras"]
+                "E Histogram", "F Morphology", "Extras", "G Frequency"]
 Kind = Literal["int", "float", "choice", "bool"]
 
 
@@ -157,6 +157,21 @@ OPERATIONS: list[OperationSpec] = [
                   tooltip="Larger values mix more dissimilar intensities."),
         ParamSpec("sigma_space", "Spatial sigma", "float", 75.0, 0.0, 255.0, 1.0,
                   tooltip="Larger values mix pixels over larger distances.")]),
+
+    OperationSpec("spectrum", "G Frequency", "FFT spectrum", frequency.spectrum, [
+        ParamSpec("log", "Log magnitude", "bool", True,
+                  tooltip="Compress the magnitude range to reveal weaker frequencies.")], live=True),
+    OperationSpec("frequency_filter", "G Frequency", "Frequency filter", frequency.frequency_filter, [
+        ParamSpec("kind", "Filter type", "choice", "lowpass", choices=frequency.KINDS,
+                  tooltip="Pass or suppress low, high, or a band of frequencies."),
+        ParamSpec("shape", "Mask shape", "choice", "ideal", choices=frequency.SHAPES,
+                  tooltip="Choose a sharp or gradual transition between frequencies."),
+        ParamSpec("cutoff", "Cutoff radius (px)", "float", 30.0, 1.0, 300.0, 1.0,
+                  tooltip="Radius from the spectrum center. Sets the ring center for band filters."),
+        ParamSpec("width", "Band width (px)", "float", 10.0, 1.0, 100.0, 1.0,
+                  tooltip="Full width of the ring for band-pass and band-stop."),
+        ParamSpec("order", "Butterworth order", "int", 2, 1, 10, 1,
+                  tooltip="Higher orders give a sharper Butterworth transition.")], live=True),
 ]
 
 

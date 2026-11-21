@@ -35,6 +35,7 @@ def capture_ui(app):
                                      if toolbox.itemText(i) == "D Spatial Filters"))
         window.apply_operation("gaussian", {"k": 5})
         window.apply_operation("equalize", {})
+        window.wipe_action.setChecked(True)
         app.processEvents()
 
         view = window.original_view
@@ -93,16 +94,18 @@ def feature_checklist():
         ("F Morphology", ("Global or Otsu threshold", "Erode, dilate, open, close")),
     )
     creativity = (
-        ("Live preview, undo/redo, clickable history (30 steps)",
+        ("Live preview, undo/redo, clickable history",
          "Linked zoom/pan, pixel inspector, Space compare",
-         "Drag & drop, recent files, built-in sample image",
+         "Before/After wipe (Ctrl+B)",
+         "Drag & drop, recent files, eight sample images",
          "Histogram dock and window (B/G/R)",
          "Use Result as Original, dark theme"),
-        ("CLAHE, unsharp mask, Canny",
-         "Salt & pepper / Gaussian noise generator",
-         "Sepia and bilateral filter",
-         "Keyboard shortcuts, Turkish/Unicode path support",
-         "Automated test suite (pytest)"),
+        ("FFT spectrum and frequency filters",
+         "Frequency Inspector (Ctrl+F)",
+         "CLAHE, unsharp mask, Canny",
+         "Noise generator, sepia, bilateral filter",
+         "Keyboard shortcuts, Unicode paths",
+         "Automated tests (pytest)"),
     )
     cells = [checklist_cell(title, items) for title, items in groups]
     rows = [f"<tr>{left}{right}</tr>" for left, right in zip(cells[::2], cells[1::2])]
@@ -185,7 +188,7 @@ td { vertical-align: top; }
 <p><b>Oguz Cetin</b> · COMP 4360 Digital Image Processing · {date.today():%d %B %Y}</p>
 <h2>1. Overview &amp; UI map</h2>
 <p>DIP Midterm is a PySide6 and OpenCV desktop app for applying and comparing image-processing
-operations. Open a file, drop it onto the window, or choose File → Open Sample Image. Adjust an
+operations. Open a file, drop it onto the window, or choose File → Sample Images. Adjust an
 operation in the left dock, click Apply to keep it, then use File → Save Result As to export.</p>
 <p><img src="ui_map.png" width="{width}" height="{height}"></p>
 <table width="100%" cellspacing="2" cellpadding="3" bgcolor="#f2f6fb">
@@ -204,10 +207,11 @@ operation in the left dock, click Apply to keep it, then use File → Save Resul
 <p style="margin-top: 5px">Match X and Y factors for uniform scale. Positive rotation is counterclockwise.
 Gaussian sigma 0 derives the blur from its kernel width. Gamma above 1 darkens the image.</p>
 <h2>4. Shortcuts</h2>
-<p>Ctrl+O Open · Ctrl+S Save · Ctrl+Z Undo · Ctrl+Y Redo · Ctrl+R Reset · Ctrl+0 Fit · Ctrl+1 100% · Space Compare</p>
+<p>Ctrl+O Open · Ctrl+S Save · Ctrl+Z Undo · Ctrl+Y Redo · Ctrl+R Reset · Ctrl+0 Fit · Ctrl+1 100%
+· Space Compare · Ctrl+B Wipe · Ctrl+F Frequency Inspector</p>
 <h2>5. Known limitations</h2>
 <p>Processing is 8-bit. Loading normalizes 16-bit images to 8-bit and discards alpha. Laplacian,
-Sobel, Canny and threshold produce grayscale output. History keeps up to 30 snapshots in RAM,
+Sobel, Canny, threshold and FFT spectrum produce grayscale output. History keeps up to 30 snapshots in RAM,
 including the original. Large images slow live previews. The Windows-only single-file executable
 can take a few seconds to start while it unpacks.</p>
 """

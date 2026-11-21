@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QMimeData, QPoint, QPointF, QSettings, Qt, QUrl
+from PySide6.QtCore import (
+    QCoreApplication, QEvent, QMimeData, QPoint, QPointF, QRectF, QSettings, Qt, QUrl,
+)
 from PySide6.QtGui import QDropEvent, QMouseEvent, QPalette, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
@@ -8,6 +10,8 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QSlider, QSpinBox,
 )
 
+from core.samples import SAMPLES
+from ops.frequency import filter_mask, frequency_filter, spectrum
 from ops.histogram import compute_hist
 from ops.registry import OPERATIONS, get_op
 from ui.main_window import MainWindow
@@ -55,7 +59,7 @@ def test_load_unicode_path_and_build_registry_pages(loaded_window, bgr_png):
     toolbox = window.ops_panel.toolbox
     assert [toolbox.itemText(i) for i in range(toolbox.count())] == [
         "A Basics", "B Affine", "C Intensity", "D Spatial Filters",
-        "E Histogram", "F Morphology", "Extras",
+        "E Histogram", "F Morphology", "Extras", "G Frequency",
     ]
     for index in range(toolbox.count()):
         page = toolbox.widget(index)
@@ -437,13 +441,19 @@ def test_drop_invalid_image_uses_open_error_dialog(loaded_window, tmp_path, monk
     assert not window.recent_menu.actions()
 
 
-def test_sample_action_loads_an_in_memory_image(window):
-    menu_action(window, "File", "Open Sample Image").trigger()
-    assert window.state.path == "sample.png"
-    assert window.state.current.shape == (480, 640, 3)
-    assert window.state.current.dtype == np.uint8
+@pytest.mark.parametrize("name", SAMPLES)
+def test_sample_actions_load_in_memory_images(window, name):
+    label, suggestion, generate = SAMPLES[name]
+    menu = menu_action(window, "File", "Sample Images").menu()
+    assert menu.toolTipsVisible()
+    action = next(action for action in menu.actions() if action.text().replace("&&", "&") == label)
+    assert action.toolTip() == suggestion
+    action.trigger()
+    assert window.state.path == f"sample_{name}.png"
+    np.testing.assert_array_equal(window.state.current, generate())
     assert window.state.history_labels() == ["Original"]
-    assert "sample.png" in window.info_label.text()
+    assert window.state.path in window.info_label.text()
+    assert window.statusBar().currentMessage() == suggestion
     assert not window.recent_menu.actions()
 
 
@@ -477,16 +487,120 @@ def test_compare_shortcut_toggles_original_and_restores_preview(loaded_window):
     window.show()
     window.activateWindow()
     QApplication.processEvents()
+    QTest.keyClick(window.result_view, Qt.Key.Key_B, Qt.KeyboardModifier.ControlModifier)
+    assert window.wipe_action.isChecked()
     QTest.keyClick(window.result_view, Qt.Key.Key_Space)
     assert window.compare_action.isChecked()
+    assert window.wipe_action.isChecked()
+    assert window.result_view._compare_pixmap is None
     assert window.result_view.pixmap().toImage() == window.original_view.pixmap().toImage()
     assert_color_histogram(window.histogram_view.axes[1], window.state.original)
     editor = operation_box(window, "rotate90").findChild(QSpinBox)
     editor.setFocus()
     QTest.keyClick(editor, Qt.Key.Key_Space)
     assert not window.compare_action.isChecked()
+    assert window.result_view._compare_pixmap is not None
     assert window.result_view.pixmap().toImage() == preview
     assert window.state.index == 1
+
+
+def test_wipe_paints_stretched_original_alongside_preview(window):
+    image = np.full((40, 80), 50, dtype=np.uint8)
+    image[20:] = 100
+    window.state.load_array(image, "wipe.png")
+    window.refresh()
+    window.show()
+    QApplication.processEvents()
+    window.apply_operation("negative", {})
+    window.wipe_action.trigger()
+    window.preview_operation("rotate90", {"k": 1})
+    hint = "sizes differ — original stretched"
+    assert window.statusBar().currentMessage() == hint
+
+    view = window.result_view
+    rect = view._image_rect()
+    grabbed = view.grab().toImage()
+    for x_fraction, expected in ((0.25, 100), (0.75, 205)):
+        point = QPointF(rect.left() + x_fraction * rect.width(),
+                        rect.top() + 0.75 * rect.height())
+        assert grabbed.pixelColor(point.toPoint()).red() == expected
+        assert view.pixel_at(point)[2] == expected
+
+    window.statusBar().clearMessage()
+    window.preview_operation("rotate90", {"k": -1})
+    assert window.statusBar().currentMessage() != hint
+
+
+def test_wipe_divider_drags_and_keeps_fraction_across_zoom_and_resize(window):
+    window.open_sample_image()
+    window.show()
+    QApplication.processEvents()
+    window.wipe_action.trigger()
+    view = window.result_view
+    assert view.split_fraction == 0.5
+    rect = view._image_rect().intersected(QRectF(view.rect()))
+    start = QPoint(round(rect.center().x()) + 6, round(rect.top() + rect.height() / 4))
+    end = start + QPoint(round(rect.width() / 4), 0)
+
+    QTest.mouseMove(view, start)
+    assert view.cursor().shape() == Qt.CursorShape.SplitHCursor
+    QTest.mousePress(view, Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(view, end)
+    QTest.mouseRelease(view, Qt.MouseButton.LeftButton, pos=end)
+    fraction = view.split_fraction
+    assert fraction == pytest.approx(0.75, abs=0.005)
+
+    view.zoom_in()
+    window.resize(window.width() + 100, window.height() + 60)
+    QApplication.processEvents()
+    assert view.split_fraction == fraction
+    view.actual_size()
+    view.zoom_in()
+    center = view.rect().center()
+    before = view.pixel_at(QPointF(center))
+    QTest.mousePress(view, Qt.MouseButton.LeftButton, pos=center)
+    QTest.mouseMove(view, center - QPoint(35, 0))
+    QTest.mouseRelease(view, Qt.MouseButton.LeftButton, pos=center - QPoint(35, 0))
+    assert view.pixel_at(QPointF(center))[0] > before[0]
+    assert view.split_fraction == fraction
+
+
+def test_frequency_inspector_follows_committed_result_and_debounced_params(loaded_window):
+    window = loaded_window
+    action = menu_action(window, "View", "Frequency Inspector…")
+    assert action.shortcut().toString() == "Ctrl+F"
+    action.trigger()
+    dialog = window._frequency_dialog
+    assert dialog.isVisible() and not dialog.isModal()
+
+    def plotted_images():
+        return [ax.images[0].get_array() for ax in dialog.axes]
+
+    QTest.qWait(215)
+    image = window.state.current
+    original_spectrum, original_mask, _ = plotted_images()
+    np.testing.assert_array_equal(original_spectrum, spectrum(image))
+
+    box = operation_box(window, "frequency_filter")
+    kind, shape = box.findChildren(QComboBox)
+    kind.setCurrentText("Band-stop")
+    shape.setCurrentText("Gaussian")
+    cutoff = box.findChildren(QDoubleSpinBox)[0]
+    cutoff.setValue(8)
+    params = window.ops_panel.current_params("frequency_filter")
+    assert (params["kind"], params["shape"], params["cutoff"]) == ("bandstop", "gaussian", 8)
+    assert plotted_images()[1] is original_mask
+    QTest.qWait(215)
+
+    magnitude, mask, preview = plotted_images()
+    np.testing.assert_array_equal(magnitude, spectrum(image))
+    np.testing.assert_array_equal(mask, filter_mask(image.shape[:2], **params))
+    np.testing.assert_array_equal(preview, frequency_filter(image, **params)[..., ::-1])
+    assert window.state.current is image
+
+    window.apply_operation("rotate90", {"k": 1})
+    QTest.qWait(215)
+    np.testing.assert_array_equal(plotted_images()[0], spectrum(window.state.current))
 
 
 def test_dock_toggle_actions_and_help_menu(window, monkeypatch):
@@ -504,7 +618,7 @@ def test_dock_toggle_actions_and_help_menu(window, monkeypatch):
     monkeypatch.setattr(QMessageBox, "about", lambda *args: messages.append(args[-1]))
     menu_action(window, "Help", "Keyboard Shortcuts").trigger()
     for shortcut in ("Ctrl+O", "Ctrl+S", "Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+R",
-                     "Ctrl+0", "Ctrl+1", "Ctrl+=", "Ctrl+-", "Space"):
+                     "Ctrl+0", "Ctrl+1", "Ctrl+=", "Ctrl+-", "Space", "Ctrl+B", "Ctrl+F"):
         assert shortcut in messages[0]
     menu_action(window, "Help", "About").trigger()
     assert all(part in messages[1] for part in ("COMP 4360 Midterm", "PySide6", "OpenCV"))

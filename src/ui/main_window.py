@@ -1,7 +1,5 @@
 import os
 
-import cv2
-import numpy as np
 from PySide6.QtCore import QEvent, QSettings, QSignalBlocker, Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
@@ -10,9 +8,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from core.samples import SAMPLES
 from core.state import ImageState
 from ops.registry import get_op
 from ui.histogram_view import HistogramView
+from ui.frequency_view import FrequencyView
 from ui.history_panel import HistoryPanel
 from ui.image_view import ImageView
 from ui.ops_panel import OpsPanel
@@ -42,6 +42,7 @@ class PanelSplitter(QSplitter):
 
 class MainWindow(QMainWindow):
     _PREVIEW_MESSAGE = "Preview — press Apply to keep"
+    _STRETCH_HINT = "sizes differ — original stretched"
 
     def __init__(self, settings=None):
         super().__init__()
@@ -51,6 +52,8 @@ class MainWindow(QMainWindow):
         self._settings = settings if settings is not None else QSettings("DIPMidterm", "App")
         self._preview_image = None
         self._histogram_dialog = None
+        self._frequency_dialog = None
+        self._stretch_hint_shown = False
         self.state = ImageState()
         self.original_view = ImageView()
         self.result_view = ImageView()
@@ -75,6 +78,7 @@ class MainWindow(QMainWindow):
         self.ops_panel.applyRequested.connect(self.apply_operation)
         self.ops_panel.previewRequested.connect(self.preview_operation)
         self.ops_panel.previewCancelled.connect(self._clear_preview)
+        self.ops_panel.paramsChanged.connect(self._update_frequency_view)
         self.ops_panel.resetRequested.connect(self.reset_image)
 
         self.histogram_view = HistogramView()
@@ -129,7 +133,12 @@ class MainWindow(QMainWindow):
         file_menu.addAction(open_act)
         self.recent_menu = file_menu.addMenu("Recent Files")
         self._update_recent_menu()
-        file_menu.addAction("Open Sample Image", self.open_sample_image)
+        samples_menu = file_menu.addMenu("Sample Images")
+        samples_menu.setToolTipsVisible(True)
+        for name, (label, suggestion, _) in SAMPLES.items():
+            action = samples_menu.addAction(label.replace("&", "&&"))
+            action.setToolTip(suggestion)
+            action.triggered.connect(lambda checked=False, name=name: self.open_sample_image(name))
         file_menu.addAction(save_act)
         file_menu.addSeparator()
         file_menu.addAction(exit_act)
@@ -160,10 +169,16 @@ class MainWindow(QMainWindow):
         self.compare_action.setShortcut("Space")
         self.compare_action.setAutoRepeat(False)
         self.compare_action.toggled.connect(self._display_result)
+        self.wipe_action = view_menu.addAction("Before/After Slider")
+        self.wipe_action.setCheckable(True)
+        self.wipe_action.setShortcut("Ctrl+B")
+        self.wipe_action.toggled.connect(self._update_wipe)
         view_menu.addSeparator()
         for dock in (self.operations_dock, self.histogram_dock, self.history_dock):
             view_menu.addAction(dock.toggleViewAction())
         view_menu.addAction("Show Histogram Window…", self.show_histogram_window)
+        inspector_action = view_menu.addAction("Frequency Inspector…", self.show_frequency_inspector)
+        inspector_action.setShortcut("Ctrl+F")
 
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction("Keyboard Shortcuts", self.show_shortcuts)
@@ -203,29 +218,14 @@ class MainWindow(QMainWindow):
             action.setToolTip(path)
             action.triggered.connect(lambda checked=False, path=path: self._open_path(path))
 
-    def open_sample_image(self):
-        height, width = 480, 640
-        horizontal = np.linspace(0, 255, width, dtype=np.uint8)
-        vertical = np.linspace(20, 230, height, dtype=np.uint8)[:, None]
-        img = np.empty((height, width, 3), dtype=np.uint8)
-        img[..., 0] = horizontal
-        img[..., 1] = vertical
-        img[..., 2] = horizontal[::-1]
-
-        cv2.rectangle(img, (32, 28), (608, 160), (30, 30, 30), -1)
-        cv2.putText(img, "COMP 4360", (53, 90), cv2.FONT_HERSHEY_SIMPLEX,
-                    1.5, (245, 245, 245), 3, cv2.LINE_AA)
-        cv2.putText(img, "Image Processing Sample", (55, 132), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8, (200, 216, 235), 2, cv2.LINE_AA)
-        cv2.circle(img, (133, 299), 84, (240, 219, 82), -1, cv2.LINE_AA)
-        cv2.circle(img, (133, 299), 45, (45, 45, 45), 3, cv2.LINE_AA)
-        cv2.rectangle(img, (238, 225), (396, 382), (110, 78, 210), -1, cv2.LINE_AA)
-        cv2.fillConvexPoly(img, np.array([(426, 383), (517, 215), (608, 383)], dtype=np.int32),
-                           (238, 238, 238), cv2.LINE_AA)
-        self.state.load_array(img, "sample.png")
+    def open_sample_image(self, name="shapes"):
+        _, suggestion, generate = SAMPLES[name]
+        self.state.load_array(generate(), f"sample_{name}.png")
         self._finish_load()
+        self.statusBar().showMessage(suggestion, 6500)
 
     def _finish_load(self):
+        self._stretch_hint_shown = False
         with QSignalBlocker(self.compare_action):
             self.compare_action.setChecked(False)
         self.result_view.fit_to_window()
@@ -272,6 +272,19 @@ class MainWindow(QMainWindow):
         self._histogram_dialog.raise_()
         self._histogram_dialog.activateWindow()
 
+    def show_frequency_inspector(self):
+        if self._frequency_dialog is None:
+            self._frequency_dialog = FrequencyView(self)
+        self._frequency_dialog.show()
+        self._update_frequency_view()
+        self._frequency_dialog.raise_()
+        self._frequency_dialog.activateWindow()
+
+    def _update_frequency_view(self, op_id="frequency_filter"):
+        dialog = self._frequency_dialog
+        if op_id == "frequency_filter" and dialog is not None and dialog.isVisible():
+            dialog.update_image(self.state.current, self.ops_panel.current_params(op_id))
+
     def show_shortcuts(self):
         shortcuts = []
         for menu_action in self.menuBar().actions():
@@ -285,6 +298,7 @@ class MainWindow(QMainWindow):
             "",
             "Mouse wheel  —  Zoom around the pointer",
             "Left drag  —  Pan a zoomed image",
+            "Drag the Before/After divider  —  Move the wipe",
             "Double-click  —  Fit to Window",
         ))
         QMessageBox.information(self, "Keyboard Shortcuts", "\n".join(shortcuts))
@@ -336,13 +350,14 @@ class MainWindow(QMainWindow):
         try:
             op = get_op(op_id)
             self._preview_image = op.func(self.state.current, **params)
+            if self.statusBar().currentMessage() != self._STRETCH_HINT:
+                self.statusBar().showMessage(self._PREVIEW_MESSAGE)
             self._display_result()
         except Exception as error:
             # No modal dialog here: previews fire while sliders are dragged.
             self._clear_preview()
             self.statusBar().showMessage(f"Preview failed: {error}", 5000)
             return
-        self.statusBar().showMessage(self._PREVIEW_MESSAGE)
 
     def undo(self):
         self.state.undo()
@@ -382,15 +397,16 @@ class MainWindow(QMainWindow):
         self.redo_action.setEnabled(self.state.can_redo())
         self.reset_action.setEnabled(self.state.has_image())
         self.promote_action.setEnabled(self.state.can_undo() or self.state.can_redo())
-        for action in (*self._zoom_actions, self.compare_action):
+        for action in (*self._zoom_actions, self.compare_action, self.wipe_action):
             action.setEnabled(self.state.has_image())
         self._update_image_info(len(labels) - 1)
+        self._update_frequency_view()
 
     def _clear_preview(self):
         self.ops_panel.cancel_pending_preview()
         self._preview_image = None
-        self._display_result()
         self.statusBar().clearMessage()
+        self._display_result()
 
     def _displayed_result(self):
         if self.compare_action.isChecked():
@@ -404,11 +420,23 @@ class MainWindow(QMainWindow):
         title = "Result — showing Original" if self.compare_action.isChecked() else "Result"
         self._result_box.setTitle(title)
         self.result_view.set_image(img)
+        self._update_wipe()
         self.histogram_view.update_images(self.state.original, img)
         if self._histogram_dialog is not None and self._histogram_dialog.isVisible():
             self._dialog_histogram.update_images(self.state.original, img)
 
+    def _update_wipe(self):
+        enabled = self.wipe_action.isChecked() and not self.compare_action.isChecked()
+        original = self.state.original if enabled else None
+        self.result_view.set_compare_image(original)
+        if (original is not None and not self._stretch_hint_shown
+                and original.shape[:2] != self._displayed_result().shape[:2]):
+            self._stretch_hint_shown = True
+            self.statusBar().showMessage(self._STRETCH_HINT, 4000)
+
     def _show_pixel(self, x, y, value):
+        if self.statusBar().currentMessage() == self._STRETCH_HINT:
+            return
         if isinstance(value, tuple):
             b, g, r = value
             channels = f"R,G,B={r},{g},{b}"

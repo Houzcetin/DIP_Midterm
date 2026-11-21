@@ -1,8 +1,8 @@
-"""Paint an image with a shareable zoom and normalized viewport center."""
+"""Paint a zoomable image with an optional before/after wipe."""
 
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
+from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 
@@ -21,6 +21,7 @@ class ImageView(QWidget):
 
     MAX_ZOOM = 8.0
     ZOOM_STEP = 1.25
+    _HANDLE_RADIUS = 15
 
     def __init__(self):
         super().__init__()
@@ -29,6 +30,10 @@ class ImageView(QWidget):
         self.setMouseTracking(True)
         self._image = None
         self._pixmap = None
+        self._compare_image = None
+        self._compare_pixmap = None
+        self._split_fraction = 0.5
+        self._split_drag_offset = None
         self._zoom = 1.0
         self._relative_to_fit = True
         self._center = QPointF(0.5, 0.5)
@@ -40,6 +45,27 @@ class ImageView(QWidget):
             self._pixmap = to_qpixmap(img) if img is not None else None
             self._image = img
             self.update()
+
+    def set_compare_image(self, img):
+        """Wipe to a second snapshot, stretched into the displayed image rect."""
+        if img is not self._compare_image:
+            self._compare_pixmap = to_qpixmap(img) if img is not None else None
+            self._compare_image = img
+            if img is None:
+                self._split_drag_offset = None
+                if self._drag_position is None:
+                    self.unsetCursor()
+            self.update()
+
+    @property
+    def split_fraction(self):
+        """Position of the wipe divider as a fraction of the visible image width."""
+        return self._split_fraction
+
+    @split_fraction.setter
+    def split_fraction(self, value):
+        self._split_fraction = max(0.0, min(1.0, value))
+        self.update()
 
     def pixmap(self):
         return self._pixmap
@@ -79,13 +105,15 @@ class ImageView(QWidget):
         rect = self._image_rect()
         if rect.isEmpty():
             return None
-        scale = self.zoom_factor
-        x = (position.x() - rect.left()) / scale
-        y = (position.y() - rect.top()) / scale
-        if 0 <= x < self._pixmap.width() and 0 <= y < self._pixmap.height():
-            x, y = int(x), int(y)
-            pixel = self._image[y, x]
-            value = int(pixel) if self._image.ndim == 2 else tuple(map(int, pixel))
+        point = self._normalized_position(position, rect)
+        if 0 <= point.x() < 1 and 0 <= point.y() < 1:
+            img = self._image
+            if self._compare_image is not None and position.x() < self._split_x(self._visible_rect(rect)):
+                img = self._compare_image
+            h, w = img.shape[:2]
+            x, y = int(point.x() * w), int(point.y() * h)
+            pixel = img[y, x]
+            value = int(pixel) if img.ndim == 2 else tuple(map(int, pixel))
             return x, y, value
         return None
 
@@ -97,7 +125,66 @@ class ImageView(QWidget):
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text())
             return
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, self.zoom_factor < 1)
-        painter.drawPixmap(self._image_rect(), self._pixmap, QRectF(self._pixmap.rect()))
+        rect = self._image_rect()
+        painter.drawPixmap(rect, self._pixmap, QRectF(self._pixmap.rect()))
+        if self._compare_pixmap is not None:
+            self._paint_wipe(painter, rect)
+
+    def _paint_wipe(self, painter, rect):
+        visible = self._visible_rect(rect)
+        if visible.isEmpty():
+            return
+        x = self._split_x(visible)
+        before = QRectF(visible.left(), visible.top(), x - visible.left(), visible.height())
+        after = QRectF(x, visible.top(), visible.right() - x, visible.height())
+        painter.save()
+        painter.setClipRect(before)
+        painter.drawPixmap(rect, self._compare_pixmap, QRectF(self._compare_pixmap.rect()))
+        painter.restore()
+
+        painter.fillRect(QRectF(x - 1, visible.top(), 2, visible.height()), QColor("#e1e6ed"))
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        center = QPointF(x, visible.center().y())
+        radius = self._HANDLE_RADIUS
+        painter.setBrush(QColor(30, 30, 30, 235))
+        painter.setPen(QPen(QColor("#e1e6ed"), 1.5))
+        painter.drawEllipse(center, radius, radius)
+        painter.drawText(QRectF(x - radius, center.y() - radius, 2 * radius, 2 * radius),
+                         Qt.AlignmentFlag.AlignCenter, "◀▶")
+        self._paint_wipe_label(painter, before, "Before")
+        self._paint_wipe_label(painter, after, "After", align_right=True)
+
+    @staticmethod
+    def _paint_wipe_label(painter, side, label, align_right=False):
+        metrics = painter.fontMetrics()
+        width, height = metrics.horizontalAdvance(label) + 16, metrics.height() + 6
+        margin = 8
+        if side.width() < width + 2 * margin or side.height() < height + 2 * margin:
+            return
+        left = side.right() - width - margin if align_right else side.left() + margin
+        pill = QRectF(left, side.top() + margin, width, height)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(30, 30, 30, 195))
+        painter.drawRoundedRect(pill, height / 2, height / 2)
+        painter.setPen(QColor("#ffffff"))
+        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, label)
+
+    def _visible_rect(self, rect):
+        return rect.intersected(QRectF(self.rect()))
+
+    def _split_x(self, visible):
+        return visible.left() + self.split_fraction * visible.width()
+
+    def _split_hit(self, position):
+        if self._compare_pixmap is None:
+            return False
+        visible = self._visible_rect(self._image_rect())
+        if visible.isEmpty():
+            return False
+        dx = abs(position.x() - self._split_x(visible))
+        dy = position.y() - visible.center().y()
+        return ((dx <= 8 and abs(dy) <= visible.height() / 2)
+                or dx**2 + dy**2 <= self._HANDLE_RADIUS**2)
 
     def wheelEvent(self, event):
         delta = event.angleDelta().y()
@@ -108,18 +195,28 @@ class ImageView(QWidget):
         event.accept()
 
     def mousePressEvent(self, event):
-        rect = self._image_rect()
-        if event.button() == Qt.MouseButton.LeftButton and (
-            rect.width() > self.width() or rect.height() > self.height()
-        ):
-            self._drag_position = event.position()
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            event.accept()
-            return
+        if event.button() == Qt.MouseButton.LeftButton:
+            rect = self._image_rect()
+            if self._split_hit(event.position()):
+                self._split_drag_offset = event.position().x() - self._split_x(self._visible_rect(rect))
+                self.setCursor(Qt.CursorShape.SplitHCursor)
+                event.accept()
+                return
+            if rect.width() > self.width() or rect.height() > self.height():
+                self._drag_position = event.position()
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                event.accept()
+                return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         position = event.position()
+        if self._split_drag_offset is not None:
+            visible = self._visible_rect(self._image_rect())
+            if not visible.isEmpty():
+                self.split_fraction = (position.x() - self._split_drag_offset - visible.left()) / visible.width()
+            event.accept()
+            return
         if self._drag_position is not None:
             delta = position - self._drag_position
             self._drag_position = position
@@ -130,19 +227,34 @@ class ImageView(QWidget):
                     rect.width(), rect.height(),
                 )
                 self._change_view(self._zoom, self._relative_to_fit, center)
+        else:
+            self._update_split_cursor(position)
         pixel = self.pixel_at(position)
         if pixel is not None:
             self.pixelHovered.emit(*pixel)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and self._drag_position is not None:
-            self._drag_position = None
-            self.unsetCursor()
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._split_drag_offset is not None:
+                self._split_drag_offset = None
+                self._update_split_cursor(event.position())
+                event.accept()
+                return
+            if self._drag_position is not None:
+                self._drag_position = None
+                self._update_split_cursor(event.position())
         super().mouseReleaseEvent(event)
+
+    def _update_split_cursor(self, position):
+        if self._split_hit(position):
+            self.setCursor(Qt.CursorShape.SplitHCursor)
+        else:
+            self.unsetCursor()
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.fit_to_window()
+            if not self._split_hit(event.position()):
+                self.fit_to_window()
             event.accept()
             return
         super().mouseDoubleClickEvent(event)
