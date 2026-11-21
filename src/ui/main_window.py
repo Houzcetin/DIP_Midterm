@@ -6,7 +6,8 @@ from PySide6.QtCore import QEvent, QSettings, QSignalBlocker, Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QApplication, QDialog, QDockWidget, QFileDialog, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QVBoxLayout, QWidget,
+    QLabel, QLineEdit, QMainWindow, QMessageBox, QSplitter, QSplitterHandle,
+    QVBoxLayout, QWidget,
 )
 
 from core.state import ImageState
@@ -15,6 +16,28 @@ from ui.histogram_view import HistogramView
 from ui.history_panel import HistoryPanel
 from ui.image_view import ImageView
 from ui.ops_panel import OpsPanel
+
+
+class _EqualizingHandle(QSplitterHandle):
+    """Splitter handle that restores an even split on double-click."""
+
+    def mouseDoubleClickEvent(self, event):
+        splitter = self.splitter()
+        half = sum(splitter.sizes()) // 2
+        splitter.setSizes([half, half])
+        event.accept()
+
+
+class PanelSplitter(QSplitter):
+    """Horizontal splitter for the Original/Result panels."""
+
+    def __init__(self):
+        super().__init__(Qt.Orientation.Horizontal)
+
+    def createHandle(self):
+        handle = _EqualizingHandle(self.orientation(), self)
+        handle.setToolTip("Drag to resize the panels; double-click to split evenly.")
+        return handle
 
 
 class MainWindow(QMainWindow):
@@ -36,12 +59,16 @@ class MainWindow(QMainWindow):
         self.original_view.pixelHovered.connect(self._show_pixel)
         self.result_view.pixelHovered.connect(self._show_pixel)
 
-        central = QWidget()
-        layout = QHBoxLayout(central)
+        # Draggable divider between the panels; double-click it to split 50/50 again.
         self._result_box = self._panel("Result", self.result_view)
-        layout.addWidget(self._panel("Original", self.original_view), 1)
-        layout.addWidget(self._result_box, 1)
-        self.setCentralWidget(central)
+        self.panel_splitter = PanelSplitter()
+        self.panel_splitter.addWidget(self._panel("Original", self.original_view))
+        self.panel_splitter.addWidget(self._result_box)
+        self.panel_splitter.setChildrenCollapsible(False)
+        self.panel_splitter.setHandleWidth(8)
+        self.panel_splitter.setStretchFactor(0, 1)
+        self.panel_splitter.setStretchFactor(1, 1)
+        self.setCentralWidget(self.panel_splitter)
 
         self.ops_panel = OpsPanel()
         self.operations_dock = self._add_dock("Operations", self.ops_panel, Qt.DockWidgetArea.LeftDockWidgetArea)

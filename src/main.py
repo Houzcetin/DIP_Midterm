@@ -41,6 +41,14 @@ def configure_appearance(app):
             background: #2e343c;
             padding-left: 8px;
         }
+        QSplitter::handle:horizontal {
+            background: #2b3038;
+            margin: 40px 2px;
+            border-radius: 2px;
+        }
+        QSplitter::handle:horizontal:hover {
+            background: #3469a6;
+        }
         QGroupBox {
             border: 1px solid #3a414a;
             border-radius: 5px;

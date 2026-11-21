@@ -520,3 +520,20 @@ def test_friendly_choice_label_emits_raw_value(loaded_window):
     assert combo.currentData() == "h"
     box.findChild(QPushButton).click()
     assert requests == [("flip", {"mode": "h"})]
+
+
+def test_panel_splitter_resizes_and_double_click_equalizes(window):
+    splitter = window.panel_splitter
+    splitter.resize(1000, 400)
+    splitter.setSizes([700, 300])
+    left, right = splitter.sizes()
+    assert left > right
+    assert not splitter.childrenCollapsible()
+
+    handle = splitter.handle(1)
+    event = QMouseEvent(QEvent.Type.MouseButtonDblClick, QPointF(2, 2), QPointF(2, 2),
+                        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+                        Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(handle, event)
+    left, right = splitter.sizes()
+    assert abs(left - right) <= 1
