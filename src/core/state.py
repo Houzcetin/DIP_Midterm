@@ -32,7 +32,12 @@ class ImageState:
         img = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
         if img is None:
             raise ValueError(f"Görüntü okunamadı: {path}")
+        self.load_array(img, path)
 
+    def load_array(self, img, name):
+        """Start a new document from a gray, BGR, or BGRA array."""
+        if not img.size or not (img.ndim == 2 or (img.ndim == 3 and img.shape[2] in (3, 4))):
+            raise ValueError("Expected a non-empty grayscale, BGR, or BGRA image.")
         # Alpha kanalı varsa at (BGRA -> BGR)
         if img.ndim == 3 and img.shape[2] == 4:
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
@@ -40,8 +45,8 @@ class ImageState:
         if img.dtype != np.uint8:
             img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
-        self._start_history(img)
-        self.path = path
+        self._start_history(img.copy())
+        self.path = name
 
     def save(self, path):
         ext = os.path.splitext(path)[1] or ".png"

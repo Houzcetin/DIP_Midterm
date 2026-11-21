@@ -1,19 +1,26 @@
 import numpy as np
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtCore import QCoreApplication, QEvent, QMimeData, QPoint, QPointF, QSettings, Qt, QUrl
+from PySide6.QtGui import QDropEvent, QMouseEvent, QPalette, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDoubleSpinBox, QGroupBox, QLabel, QMessageBox,
+    QApplication, QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox, QLabel, QMessageBox,
     QPushButton, QScrollArea, QSlider, QSpinBox,
 )
 
+from ops.histogram import compute_hist
 from ops.registry import OPERATIONS, get_op
 from ui.main_window import MainWindow
 
 
 @pytest.fixture
-def window(qapp):
-    window = MainWindow()
+def settings(tmp_path):
+    return QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+
+
+@pytest.fixture
+def window(qapp, settings):
+    window = MainWindow(settings)
     yield window
     window.close()
     window.deleteLater()
@@ -128,8 +135,8 @@ def test_live_preview_is_debounced_and_apply_commits(loaded_window):
     window.ops_panel.previewRequested.connect(lambda *args: requests.append(args))
     box = operation_box(window, "flip")
     direction = box.findChild(QComboBox)
-    direction.setCurrentText("v")
-    direction.setCurrentText("both")
+    direction.setCurrentText("Vertical")
+    direction.setCurrentText("Both")
     assert requests == []
     QTest.qWait(170)
 
@@ -158,7 +165,7 @@ def test_page_change_restores_display_and_cancels_pending_preview(loaded_window)
 
     window.preview_operation("flip", {"mode": "v"})
     assert window.result_view.pixmap().toImage() != committed_display
-    direction.setCurrentText("both")
+    direction.setCurrentText("Both")
     toolbox.setCurrentIndex(1)
     QTest.qWait(170)
     assert cancellations == [True]
@@ -172,12 +179,12 @@ def test_commit_and_undo_cancel_pending_preview(loaded_window):
     direction = operation_box(window, "flip").findChild(QComboBox)
     requests = []
     window.ops_panel.previewRequested.connect(lambda *args: requests.append(args))
-    direction.setCurrentText("v")
+    direction.setCurrentText("Vertical")
     window.apply_operation("flip", {"mode": "h"})
     QTest.qWait(170)
     assert requests == []
 
-    direction.setCurrentText("both")
+    direction.setCurrentText("Both")
     window.undo_action.trigger()
     QTest.qWait(170)
     assert requests == []
@@ -249,3 +256,267 @@ def test_failed_non_live_apply_restores_cursor_and_keeps_history(loaded_window, 
     assert len(warnings) == 1
     assert QApplication.overrideCursor() is None
     assert window.state.history_labels() == ["Original"]
+
+
+def menu_action(window, menu_name, text):
+    menu = next(action.menu() for action in window.menuBar().actions()
+                if action.text().replace("&", "") == menu_name)
+    return next(action for action in menu.actions() if action.text().replace("&", "") == text)
+
+
+def assert_color_histogram(ax, img):
+    for line, counts in zip(ax.lines, compute_hist(img).values()):
+        assert line.get_visible()
+        np.testing.assert_array_equal(line.get_ydata(), counts)
+    assert not ax.patches[0].get_visible()
+
+
+def test_histograms_follow_load_apply_and_preview(loaded_window):
+    window = loaded_window
+    original_ax, result_ax = window.histogram_view.axes
+    assert_color_histogram(original_ax, window.state.original)
+    assert_color_histogram(result_ax, window.state.original)
+
+    window.apply_operation("negative", {})
+    committed = window.state.current
+    assert_color_histogram(result_ax, committed)
+    menu_action(window, "View", "Show Histogram Window…").trigger()
+    assert window._histogram_dialog.isVisible()
+    assert not window._histogram_dialog.isModal()
+    large_ax = window._dialog_histogram.axes[1]
+    assert_color_histogram(large_ax, committed)
+
+    window.preview_operation("to_grayscale", {})
+    preview = get_op("to_grayscale").func(committed)
+    for ax in (result_ax, large_ax):
+        assert all(not line.get_visible() for line in ax.lines)
+        fill = ax.patches[0]
+        assert fill.get_visible()
+        np.testing.assert_array_equal(fill.get_xy()[1:257, 1], compute_hist(preview)["gray"])
+    assert_color_histogram(original_ax, window.state.original)
+    assert window.state.current is committed
+
+    window._clear_preview()
+    assert_color_histogram(result_ax, committed)
+    assert_color_histogram(large_ax, committed)
+
+
+def test_history_click_selects_step_and_marks_redo(loaded_window):
+    window = loaded_window
+    window.apply_operation("negative", {})
+    window.apply_operation("to_grayscale", {})
+    window.show()
+    QApplication.processEvents()
+    history = window.history_panel
+    assert [history.item(row).text() for row in range(history.count())] == window.state.history_labels()
+    assert history.currentRow() == 2
+
+    def click_row(row):
+        QTest.mouseClick(history.viewport(), Qt.MouseButton.LeftButton,
+                         pos=history.visualItemRect(history.item(row)).center())
+
+    click_row(0)
+    assert window.state.index == history.currentRow() == 0
+    assert window.info_label.text().endswith("step 0/2")
+    disabled = history.palette().brush(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+    assert history.item(2).foreground() == disabled
+    click_row(2)
+    assert window.state.index == history.currentRow() == 2
+    assert history.item(2).foreground() != disabled
+    window.preview_operation("negative", {})
+    click_row(2)
+    assert window._preview_image is None
+
+
+def test_zoom_actions_change_both_views_and_restore_fit(window):
+    window.open_sample_image()
+    window.show()
+    QApplication.processEvents()
+    views = (window.original_view, window.result_view)
+    fit = tuple(view.zoom_factor for view in views)
+    menu_action(window, "View", "Zoom In").trigger()
+    assert tuple(view.zoom_factor for view in views) == pytest.approx(tuple(f * 1.25 for f in fit))
+    menu_action(window, "View", "Zoom Out").trigger()
+    assert tuple(view.zoom_factor for view in views) == pytest.approx(fit)
+    menu_action(window, "View", "Actual Size 100%").trigger()
+    assert all(view.zoom_factor == 1.0 for view in views)
+    menu_action(window, "View", "Fit to Window").trigger()
+    assert tuple(view.zoom_factor for view in views) == pytest.approx(fit)
+
+
+def test_wheel_anchors_pixel_and_pan_links_relative_centers(window):
+    window.open_sample_image()
+    window.apply_operation("scale", {"sx": 2.0, "sy": 2.0, "interp": "nearest"})
+    window.show()
+    QApplication.processEvents()
+    original, result = window.original_view, window.result_view
+    menu_action(window, "View", "Zoom In").trigger()
+    point = original.rect().center() + QPoint(35, 0)
+    pixel_before = original.pixel_at(QPointF(point))
+    wheel = QWheelEvent(QPointF(point), QPointF(original.mapToGlobal(point)), QPoint(),
+                        QPoint(0, 120), Qt.MouseButton.NoButton,
+                        Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False)
+    QApplication.sendEvent(original, wheel)
+    assert original.pixel_at(QPointF(point)) == pixel_before
+    assert original.zoom_factor == pytest.approx(2 * result.zoom_factor, rel=0.02)
+
+    center = original.rect().center()
+    QTest.mousePress(original, Qt.MouseButton.LeftButton, pos=center)
+    QTest.mouseMove(original, center - QPoint(40, 0))
+    QTest.mouseRelease(original, Qt.MouseButton.LeftButton)
+    x_original, _, _ = original.pixel_at(QPointF(center))
+    x_result, _, _ = result.pixel_at(QPointF(result.rect().center()))
+    assert x_original > window.state.original.shape[1] / 2
+    assert abs(x_original * 2 - x_result) <= 2
+
+    QTest.mouseDClick(original, Qt.MouseButton.LeftButton, pos=center)
+    assert original.zoom_factor * window.state.original.shape[1] == pytest.approx(original.width())
+    assert result.zoom_factor * window.state.current.shape[1] == pytest.approx(result.width())
+    menu_action(window, "View", "Actual Size 100%").trigger()
+    for _ in range(12):
+        menu_action(window, "View", "Zoom In").trigger()
+    assert original.zoom_factor == result.zoom_factor == 8.0
+
+
+def test_pixel_inspector_emits_bgr_and_shows_rgb_in_status(loaded_window):
+    window = loaded_window
+    window.show()
+    QApplication.processEvents()
+    view = window.original_view
+    view.actual_size()
+    image = window.state.original
+    x, y = 5, 7
+    pos = QPointF((view.width() - image.shape[1]) / 2 + x + 0.5,
+                  (view.height() - image.shape[0]) / 2 + y + 0.5)
+    b, g, r = map(int, image[y, x])
+    assert view.pixel_at(pos) == (x, y, (b, g, r))
+    assert view.pixel_at(QPointF(0, 0)) is None
+
+    pixels = []
+    view.pixelHovered.connect(lambda *pixel: pixels.append(pixel))
+    event = QMouseEvent(QEvent.Type.MouseMove, pos, QPointF(view.mapToGlobal(pos.toPoint())),
+                        Qt.MouseButton.NoButton, Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(view, event)
+    assert pixels == [(x, y, (b, g, r))]
+    assert window.statusBar().currentMessage() == f"x={x}, y={y} | R,G,B={r},{g},{b}"
+
+    window.preview_operation("to_grayscale", {})
+    gray_view = window.result_view
+    gray_pos = QPointF((gray_view.width() - image.shape[1]) / 2 + x + 0.5,
+                       (gray_view.height() - image.shape[0]) / 2 + y + 0.5)
+    assert gray_view.pixel_at(gray_pos) == (x, y, int(window._preview_image[y, x]))
+
+
+def test_drop_opens_local_file(window, bgr_png):
+    path, image = bgr_png
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(path))])
+    drop = QDropEvent(QPointF(10, 10), Qt.DropAction.CopyAction, mime,
+                      Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    assert window.acceptDrops()
+    window.dropEvent(drop)
+    assert drop.isAccepted()
+    np.testing.assert_array_equal(window.state.current, image)
+    assert window.recent_menu.actions()[0].toolTip() == str(path)
+
+
+def test_drop_invalid_image_uses_open_error_dialog(loaded_window, tmp_path, monkeypatch):
+    window = loaded_window
+    original = window.state.current
+    errors = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *args: errors.append(args[-1]))
+    path = tmp_path / "invalid.png"
+    path.write_bytes(b"invalid image")
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(path))])
+    drop = QDropEvent(QPointF(), Qt.DropAction.CopyAction, mime,
+                      Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    window.dropEvent(drop)
+    assert len(errors) == 1
+    assert window.state.current is original
+    assert not window.recent_menu.actions()
+
+
+def test_sample_action_loads_an_in_memory_image(window):
+    menu_action(window, "File", "Open Sample Image").trigger()
+    assert window.state.path == "sample.png"
+    assert window.state.current.shape == (480, 640, 3)
+    assert window.state.current.dtype == np.uint8
+    assert window.state.history_labels() == ["Original"]
+    assert "sample.png" in window.info_label.text()
+    assert not window.recent_menu.actions()
+
+
+def test_recent_files_are_capped_reordered_and_persisted(window, settings, bgr_png, monkeypatch):
+    path, _ = bgr_png
+    paths = [path.with_name(f"Image {index}.png") for index in range(6)]
+    open_action = menu_action(window, "File", "Open...")
+    for entry in paths:
+        entry.write_bytes(path.read_bytes())
+        monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *_: (str(entry), ""))
+        open_action.trigger()
+    assert [action.toolTip() for action in window.recent_menu.actions()] == list(map(str, paths[:0:-1]))
+    window.recent_menu.actions()[-1].trigger()
+    expected = [paths[1], *paths[:1:-1]]
+    assert window.state.path == str(paths[1])
+    settings.sync()
+    stored_settings = QSettings(settings.fileName(), QSettings.Format.IniFormat)
+    reopened = MainWindow(stored_settings)
+    try:
+        assert [action.toolTip() for action in reopened.recent_menu.actions()] == list(map(str, expected))
+    finally:
+        reopened.close()
+        reopened.deleteLater()
+
+
+def test_compare_shortcut_toggles_original_and_restores_preview(loaded_window):
+    window = loaded_window
+    window.apply_operation("negative", {})
+    window.preview_operation("to_grayscale", {})
+    preview = window.result_view.pixmap().toImage()
+    window.show()
+    window.activateWindow()
+    QApplication.processEvents()
+    QTest.keyClick(window.result_view, Qt.Key.Key_Space)
+    assert window.compare_action.isChecked()
+    assert window.result_view.pixmap().toImage() == window.original_view.pixmap().toImage()
+    assert_color_histogram(window.histogram_view.axes[1], window.state.original)
+    editor = operation_box(window, "rotate90").findChild(QSpinBox)
+    editor.setFocus()
+    QTest.keyClick(editor, Qt.Key.Key_Space)
+    assert not window.compare_action.isChecked()
+    assert window.result_view.pixmap().toImage() == preview
+    assert window.state.index == 1
+
+
+def test_dock_toggle_actions_and_help_menu(window, monkeypatch):
+    window.show()
+    for dock in (window.operations_dock, window.histogram_dock, window.history_dock):
+        action = menu_action(window, "View", dock.windowTitle())
+        assert action == dock.toggleViewAction()
+        action.trigger()
+        assert dock.isHidden()
+        action.trigger()
+        assert dock.isVisible()
+
+    messages = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *args: messages.append(args[-1]))
+    monkeypatch.setattr(QMessageBox, "about", lambda *args: messages.append(args[-1]))
+    menu_action(window, "Help", "Keyboard Shortcuts").trigger()
+    for shortcut in ("Ctrl+O", "Ctrl+S", "Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+R",
+                     "Ctrl+0", "Ctrl+1", "Ctrl+=", "Ctrl+-", "Space"):
+        assert shortcut in messages[0]
+    menu_action(window, "Help", "About").trigger()
+    assert all(part in messages[1] for part in ("COMP 4360 Midterm", "PySide6", "OpenCV"))
+
+
+def test_friendly_choice_label_emits_raw_value(loaded_window):
+    window = loaded_window
+    box = operation_box(window, "flip")
+    combo = box.findChild(QComboBox)
+    requests = []
+    window.ops_panel.applyRequested.connect(lambda *args: requests.append(args))
+    assert combo.currentText() == "Horizontal"
+    assert combo.currentData() == "h"
+    box.findChild(QPushButton).click()
+    assert requests == [("flip", {"mode": "h"})]

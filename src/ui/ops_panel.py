@@ -18,6 +18,14 @@ GROUPS = (
     "E Histogram", "F Morphology", "Extras",
 )
 
+CHOICE_LABELS = {
+    "h": "Horizontal",
+    "v": "Vertical",
+    "global": "Global (t)",
+    "otsu": "Otsu (auto)",
+    "salt_pepper": "Salt & pepper",
+}
+
 
 class OpsPanel(QWidget):
     """Expose the operation forms and their preview and apply signals."""
@@ -115,9 +123,10 @@ class OpsPanel(QWidget):
     def _parameter_control(self, param: ParamSpec):
         if param.kind == "choice":
             combo = QComboBox()
-            combo.addItems(param.choices)
-            combo.setCurrentText(param.default)
-            return combo, combo.currentText, combo.currentTextChanged
+            for value in param.choices:
+                combo.addItem(CHOICE_LABELS.get(value, value.capitalize()), value)
+            combo.setCurrentIndex(combo.findData(param.default))
+            return combo, combo.currentData, combo.currentIndexChanged
         if param.kind == "bool":
             check = QCheckBox()
             check.setChecked(param.default)
