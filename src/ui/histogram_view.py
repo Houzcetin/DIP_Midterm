@@ -12,16 +12,17 @@ from matplotlib.patches import Polygon
 from matplotlib.ticker import MaxNLocator
 
 from ops.histogram import compute_hist
+from ui.themes import Theme, get_theme
 
 
 class HistogramView(QWidget):
     _BINS = np.arange(256)
     _COLORS = {"b": "#559bff", "g": "#6bd887", "r": "#ff6979"}
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, theme: Theme | None = None):
         super().__init__(parent)
         self.setMinimumSize(245, 280)
-        self.figure = Figure(figsize=(3, 4), facecolor="#25282d", layout="tight")
+        self.figure = Figure(figsize=(3, 4), layout="tight")
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.axes = self.figure.subplots(2, 1)
         self._images = [None, None]
@@ -32,25 +33,35 @@ class HistogramView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.canvas)
         for ax, title in zip(self.axes, ("Original", "Result")):
-            ax.set_title(title, fontsize=10, color="#e1e6ed")
-            ax.set_facecolor("#1e1e1e")
+            ax.set_title(title, fontsize=10)
             # Pad x so spikes at 0 and 255 (e.g. binary images) are not hidden by the spines.
             ax.set(xlim=(-4, 259), ylim=(0, 1), xticks=[0, 64, 128, 192, 255])
-            ax.tick_params(colors="#c3cad4", labelsize=8, length=3)
+            ax.tick_params(labelsize=8, length=3)
             ax.yaxis.set_major_locator(MaxNLocator(nbins=3, integer=True))
-            ax.yaxis.get_offset_text().set(color="#c3cad4", fontsize=8)
-            for spine in ax.spines.values():
-                spine.set_color("#505964")
-            ax.grid(axis="y", color="#393e45", linewidth=0.5)
+            ax.yaxis.get_offset_text().set_fontsize(8)
+            ax.grid(axis="y", linewidth=0.5)
             ax.set_axisbelow(True)
 
-            fill = Polygon([[0, 0], [255, 0]], facecolor="#c3cad4", edgecolor="#c3cad4",
-                           linewidth=0.6, alpha=0.7, visible=False)
+            fill = Polygon([[0, 0], [255, 0]], linewidth=0.6, alpha=0.7, visible=False)
             ax.add_patch(fill)
             lines = {channel: ax.plot(self._BINS, np.zeros(256), color=color,
                                       linewidth=1, alpha=0.75, visible=False)[0]
                      for channel, color in self._COLORS.items()}
             self._artists.append((fill, lines))
+        self.apply_theme(theme or get_theme(None))
+
+    def apply_theme(self, theme: Theme) -> None:
+        """Recolor the histogram chrome and grayscale fill in place."""
+        self.figure.set_facecolor(theme.window)
+        for ax, (fill, _) in zip(self.axes, self._artists):
+            ax.set_facecolor(theme.base)
+            ax.title.set_color(theme.text)
+            ax.tick_params(colors=theme.muted_text, grid_color=theme.button)
+            for spine in ax.spines.values():
+                spine.set_color(theme.border)
+            fill.set_facecolor(theme.accent)
+            fill.set_edgecolor(theme.accent)
+        self.canvas.draw_idle()
 
     def update_images(self, original, result):
         """Refresh changed snapshots and coalesce the canvas repaint."""

@@ -1,7 +1,7 @@
 import os
 
-from PySide6.QtCore import QEvent, QSettings, QSignalBlocker, Qt
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtCore import QEvent, QSettings, QSignalBlocker, Qt, Signal
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QApplication, QDialog, QDockWidget, QFileDialog, QGroupBox,
     QLabel, QLineEdit, QMainWindow, QMessageBox, QSplitter, QSplitterHandle,
@@ -16,6 +16,7 @@ from ui.frequency_view import FrequencyView
 from ui.history_panel import HistoryPanel
 from ui.image_view import ImageView
 from ui.ops_panel import OpsPanel
+from ui.themes import THEMES, apply_theme, get_theme, swatch_icon
 
 
 class _EqualizingHandle(QSplitterHandle):
@@ -41,6 +42,8 @@ class PanelSplitter(QSplitter):
 
 
 class MainWindow(QMainWindow):
+    themeChanged = Signal(object)
+
     _PREVIEW_MESSAGE = "Preview — press Apply to keep"
     _STRETCH_HINT = "sizes differ — original stretched"
 
@@ -50,6 +53,7 @@ class MainWindow(QMainWindow):
         self.resize(1400, 800)
 
         self._settings = settings if settings is not None else QSettings("DIPMidterm", "App")
+        self._theme = get_theme(self._settings.value("theme"))
         self._preview_image = None
         self._histogram_dialog = None
         self._frequency_dialog = None
@@ -81,7 +85,8 @@ class MainWindow(QMainWindow):
         self.ops_panel.paramsChanged.connect(self._update_frequency_view)
         self.ops_panel.resetRequested.connect(self.reset_image)
 
-        self.histogram_view = HistogramView()
+        self.histogram_view = HistogramView(theme=self._theme)
+        self.themeChanged.connect(self.histogram_view.apply_theme)
         self.history_panel = HistoryPanel()
         right = Qt.DockWidgetArea.RightDockWidgetArea
         self.histogram_dock = self._add_dock("Histogram", self.histogram_view, right)
@@ -179,10 +184,32 @@ class MainWindow(QMainWindow):
         view_menu.addAction("Show Histogram Window…", self.show_histogram_window)
         inspector_action = view_menu.addAction("Frequency Inspector…", self.show_frequency_inspector)
         inspector_action.setShortcut("Ctrl+F")
+        view_menu.addSeparator()
+        theme_menu = view_menu.addMenu("Theme")
+        theme_group = QActionGroup(theme_menu)
+        theme_group.setExclusive(True)
+        self._theme_actions = {}
+        for theme in THEMES.values():
+            action = theme_menu.addAction(swatch_icon(theme), theme.label)
+            action.setCheckable(True)
+            action.setData(theme.id)
+            theme_group.addAction(action)
+            self._theme_actions[theme.id] = action
+        self._theme_actions[self._theme.id].setChecked(True)
+        theme_group.triggered.connect(lambda action: self.set_theme(action.data()))
 
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction("Keyboard Shortcuts", self.show_shortcuts)
         help_menu.addAction("About", self.show_about)
+
+    def set_theme(self, theme_id: str | None) -> None:
+        """Apply the selected appearance and persist it for the next launch."""
+        theme = get_theme(theme_id)
+        apply_theme(QApplication.instance(), theme)
+        self._theme = theme
+        self._settings.setValue("theme", theme.id)
+        self._theme_actions[theme.id].setChecked(True)
+        self.themeChanged.emit(theme)
 
     def open_image(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -264,7 +291,8 @@ class MainWindow(QMainWindow):
             dialog = QDialog(self)
             dialog.setWindowTitle("Histogram")
             dialog.resize(700, 560)
-            self._dialog_histogram = HistogramView(dialog)
+            self._dialog_histogram = HistogramView(dialog, theme=self._theme)
+            self.themeChanged.connect(self._dialog_histogram.apply_theme)
             QVBoxLayout(dialog).addWidget(self._dialog_histogram)
             self._histogram_dialog = dialog
         self._dialog_histogram.update_images(self.state.original, self._displayed_result())
@@ -274,7 +302,8 @@ class MainWindow(QMainWindow):
 
     def show_frequency_inspector(self):
         if self._frequency_dialog is None:
-            self._frequency_dialog = FrequencyView(self)
+            self._frequency_dialog = FrequencyView(self, theme=self._theme)
+            self.themeChanged.connect(self._frequency_dialog.apply_theme)
         self._frequency_dialog.show()
         self._update_frequency_view()
         self._frequency_dialog.raise_()
