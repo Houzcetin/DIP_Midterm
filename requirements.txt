@@ -2,3 +2,4 @@ opencv-python
 PySide6
 matplotlib
 pyinstaller
+pytest
