@@ -21,6 +21,8 @@ TURKISH = {
     "&Use Result as Original": "Sonucu Ö&zgün Görüntü Olarak Kullan",
     "Auto Enhance...": "Otomatik İyileştirme...",
     "Auto Enhance": "Otomatik İyileştirme",
+    "Analyze the image and fix noise, color, contrast, exposure and sharpness (Ctrl+E).":
+        "Görüntüyü analiz eder; gürültü, renk, kontrast, pozlama ve keskinliği düzeltir (Ctrl+E).",
     "Auto Enhance could not process this image.": "Otomatik İyileştirme bu görüntüyü işleyemedi.",
     "&View": "&Görünüm",
     "Fit to Window": "Pencereye Sığdır",

@@ -95,9 +95,9 @@ def test_basics_quick_buttons(loaded_window):
     window.ops_panel.resetRequested.connect(lambda: resets.append(True))
     buttons = quick.findChildren(QPushButton)
     assert [button.text() for button in buttons] == [
-        "Auto Enhance", "Grayscale", "Flip H", "Flip V", "Rotate 90° CW", "Rotate 90° CCW", "Reset",
+        "Grayscale", "Flip H", "Flip V", "Rotate 90° CW", "Rotate 90° CCW", "Reset",
     ]
-    for button in buttons[1:]:
+    for button in buttons:
         button.click()
 
     assert requests == [
@@ -108,6 +108,16 @@ def test_basics_quick_buttons(loaded_window):
     assert window.state.index == 6
     assert window.state.history_labels()[-1] == "Reset"
     np.testing.assert_array_equal(window.state.current, window.state.original)
+
+
+def test_auto_enhance_button_stays_visible_on_every_page(loaded_window):
+    window = loaded_window
+    button = window.ops_panel.auto_enhance_button
+    assert button.objectName() == "autoEnhanceButton" and button.isEnabled()
+    for index in range(window.ops_panel.toolbox.count()):
+        window.ops_panel.toolbox.setCurrentIndex(index)
+        assert not window.ops_panel.toolbox.widget(index).isAncestorOf(button)
+        assert button.isVisibleTo(window)
 
 
 def test_numeric_controls_stay_in_sync(loaded_window):

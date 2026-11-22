@@ -166,6 +166,22 @@ def build_stylesheet(theme: Theme) -> str:
         QPushButton:pressed {{
             background: {theme.accent_soft};
         }}
+        QPushButton#autoEnhanceButton {{
+            background: {theme.accent};
+            color: {theme.on_accent};
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 11pt;
+            padding: 9px 12px;
+        }}
+        QPushButton#autoEnhanceButton:hover, QPushButton#autoEnhanceButton:focus {{
+            background: {theme.accent_hover};
+        }}
+        QPushButton#autoEnhanceButton:disabled {{
+            background: {theme.accent_soft};
+            color: {theme.disabled_text};
+        }}
         QSlider::groove:horizontal {{
             background: {theme.border};
             border-radius: 2px;

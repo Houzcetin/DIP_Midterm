@@ -72,6 +72,7 @@ class OpsPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._member_header())
+        layout.addWidget(self._auto_enhance_button())
         layout.addWidget(self.toolbox)
         for group in GROUPS:
             index = self.toolbox.addItem(self._group_page(group), "")
@@ -138,15 +139,28 @@ class OpsPanel(QWidget):
         scroll.setWidget(page)
         return scroll
 
+    def _auto_enhance_button(self):
+        """Accent-filled button that stays visible above every operation group."""
+        holder = QWidget()
+        row = QHBoxLayout(holder)
+        row.setContentsMargins(8, 0, 8, 6)
+        self.auto_enhance_button = QPushButton()
+        self.auto_enhance_button.setObjectName("autoEnhanceButton")
+        self.auto_enhance_button.setEnabled(False)
+        self.auto_enhance_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._texts.extend((
+            (self.auto_enhance_button.setText, "Auto Enhance"),
+            (self.auto_enhance_button.setToolTip,
+             "Analyze the image and fix noise, color, contrast, exposure and sharpness (Ctrl+E)."),
+        ))
+        self.auto_enhance_button.clicked.connect(self.autoEnhanceRequested.emit)
+        row.addWidget(self.auto_enhance_button)
+        return holder
+
     def _quick_actions(self):
         box = QGroupBox()
         self._texts.append((box.setTitle, "Quick actions"))
         grid = QGridLayout(box)
-        self.auto_enhance_button = QPushButton()
-        self.auto_enhance_button.setEnabled(False)
-        self._texts.append((self.auto_enhance_button.setText, "Auto Enhance"))
-        self.auto_enhance_button.clicked.connect(self.autoEnhanceRequested.emit)
-        grid.addWidget(self.auto_enhance_button, 0, 0, 1, 2)
         for i, (label, op_id, params) in enumerate((
             ("Grayscale", "to_grayscale", {}),
             ("Flip H", "flip", {"mode": "h"}),
@@ -160,12 +174,12 @@ class OpsPanel(QWidget):
                 lambda checked=False, op_id=op_id, params=params:
                 self.applyRequested.emit(op_id, params)
             )
-            grid.addWidget(button, 1 + i // 2, i % 2)
+            grid.addWidget(button, i // 2, i % 2)
         reset = QPushButton()
         self._texts.extend(((reset.setText, "Reset"),
                             (reset.setToolTip, "Return to the original image (undoable, Ctrl+R).")))
         reset.clicked.connect(self.resetRequested.emit)
-        grid.addWidget(reset, 3, 1)
+        grid.addWidget(reset, 2, 1)
         return box
 
     def _operation_box(self, op: OperationSpec):
