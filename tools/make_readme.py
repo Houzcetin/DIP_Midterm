@@ -105,7 +105,7 @@ def feature_checklist():
          "Frequency Inspector (Ctrl+F)",
          "CLAHE, unsharp mask, Canny",
          "Noise generator, sepia, bilateral filter",
-         "Keyboard shortcuts, Unicode paths",
+         "English/Turkish UI, shortcuts, Unicode paths",
          "Automated tests (pytest)"),
     )
     cells = [checklist_cell(title, items) for title, items in groups]
