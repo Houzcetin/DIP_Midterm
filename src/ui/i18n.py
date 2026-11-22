@@ -19,6 +19,9 @@ TURKISH = {
     "&Redo": "&Yinele",
     "Reset to &Original": "Özgün Görüntüye &Dön",
     "&Use Result as Original": "Sonucu Ö&zgün Görüntü Olarak Kullan",
+    "Auto Enhance...": "Otomatik İyileştirme...",
+    "Auto Enhance": "Otomatik İyileştirme",
+    "Auto Enhance could not process this image.": "Otomatik İyileştirme bu görüntüyü işleyemedi.",
     "&View": "&Görünüm",
     "Fit to Window": "Pencereye Sığdır",
     "Actual Size 100%": "Gerçek Boyut %100",
@@ -57,6 +60,43 @@ TURKISH = {
     "Operation failed": "İşlem başarısız",
     "Could not apply {operation}.": "{operation} işlemi uygulanamadı.",
     "Preview failed: {operation}": "Önizleme oluşturulamadı: {operation}",
+
+    # Auto Enhance report
+    "Auto Enhance Report": "Otomatik İyileştirme Raporu",
+    "Close": "Kapat",
+    "Detected": "Tespit edilenler",
+    "Applied steps": "Uygulanan adımlar",
+    "Before → After": "Önce → Sonra",
+    "Well-exposed image": "Pozlaması dengeli görüntü",
+    "Dark image": "Karanlık görüntü",
+    "Bright image": "Parlak görüntü",
+    "Grayscale image": "Gri tonlamalı görüntü",
+    "Color image": "Renkli görüntü",
+    "Mean brightness": "Ortalama parlaklık",
+    "Overall contrast": "Genel kontrast",
+    "Luminance range (2nd–98th percentile)": "Parlaklık aralığı (2. ve 98. yüzdelikler)",
+    "Local contrast": "Yerel kontrast",
+    "Isolated black and white pixels": "Çevresinden ayrışan siyah ve beyaz pikseller",
+    "Estimated Gaussian noise (8-bit sigma)": "Tahmini Gauss gürültüsü (8 bit sigma)",
+    "Sharpness (Laplacian variance)": "Keskinlik (Laplasyen varyansı)",
+    "Color cast (channel mean deviation)": "Renk sapması (kanal ortalamalarının sapması)",
+    "Mean saturation": "Ortalama doygunluk",
+    "Reduce isolated black and white pixels ({fraction:.1%}).":
+        "Çevresinden ayrışan siyah ve beyaz pikselleri ({fraction:.1%}) azaltmak için.",
+    "Reduce estimated Gaussian noise (sigma {sigma:.1f}) while preserving edges.":
+        "Kenarları koruyarak tahmini Gauss gürültüsünü (sigma {sigma:.1f}) azaltmak için.",
+    "Reduce the imbalance between channel means ({cast:.2f}).":
+        "Kanal ortalamaları arasındaki dengesizliği ({cast:.2f}) azaltmak için.",
+    "Expand the narrow luminance range ({spread:.2f}).":
+        "Dar parlaklık aralığını ({spread:.2f}) genişletmek için.",
+    "Increase weak local contrast ({contrast:.3f}).":
+        "Düşük yerel kontrastı ({contrast:.3f}) artırmak için.",
+    "Move mean brightness ({mean:.2f}) toward {target:.2f}.":
+        "Ortalama parlaklığı ({mean:.2f}) {target:.2f} hedefine yaklaştırmak için.",
+    "Bring out soft edges (sharpness {sharpness:.5f}).":
+        "Bulanık kenarları belirginleştirmek için (keskinlik {sharpness:.5f}).",
+    "The image already looks well exposed, clean and sharp.":
+        "Görüntü zaten dengeli pozlanmış, temiz ve keskin görünüyor.",
 
     # Image panels, status, plots, and themes
     "Operations": "İşlemler",
@@ -161,6 +201,10 @@ TURKISH = {
     "Add noise": "Gürültü ekleme",
     "Sepia": "Sepya",
     "Bilateral filter": "Çift taraflı filtre",
+    "White balance": "Beyaz dengesi",
+    "Strength": "Düzeltme düzeyi",
+    "Blend gray-world color correction from 0 (off) to 1 (full).":
+        "Gri dünya renk düzeltmesini 0 (kapalı) ile 1 (tam) arasında uygular.",
     "FFT spectrum": "FFT spektrumu",
     "Frequency filter": "Frekans filtresi",
 

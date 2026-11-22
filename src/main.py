@@ -23,6 +23,8 @@ def run_selftest(app, out_dir):
     """
     import traceback
     from pathlib import Path
+    from ops.extras import add_noise
+    from ops.intensity import gamma
     from ops.registry import OPERATIONS
 
     out = Path(out_dir)
@@ -46,13 +48,23 @@ def run_selftest(app, out_dir):
         # Fails if the figure PNGs were not bundled into the exe.
         avatar_count = sum(not avatars.figure(member).isNull() for member in avatars.MEMBERS)
         window.set_theme(DEFAULT_THEME)
+        degraded = add_noise(gamma(window.state.current, 2.5), "gaussian", 0.06, seed=4360)
+        window.state.load_array(degraded, "selftest_degraded.png")
+        window.refresh()
+        window.auto_enhance()
+        auto_steps = window.state.index
+        if not auto_steps:
+            raise RuntimeError("Auto Enhance did not apply any steps to the degraded sample.")
+        window.auto_report_dialog.close()
+        window.open_sample_image()
         window.apply_operation("gaussian", {"k": 5, "sigma": 0.0})
         window.apply_operation("equalize", {})
         app.processEvents()
         window.histogram_view.canvas.draw()
         window.grab().save(str(out / "selftest.png"))
         report.write_text(f"OK {len(OPERATIONS)} operations, themes={len(THEMES)}, languages=2, "
-                          f"avatars={avatar_count}, history={len(window.state.history_labels())}\n",
+                          f"avatars={avatar_count}, history={len(window.state.history_labels())}, "
+                          f"auto_steps={auto_steps}\n",
                           encoding="utf-8")
         return 0
     except Exception:

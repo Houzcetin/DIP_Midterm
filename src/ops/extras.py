@@ -8,6 +8,18 @@ from .basics import to_grayscale
 from .filters import gaussian
 
 
+def white_balance(img: np.ndarray, strength: float = 1.0) -> np.ndarray:
+    """Reduce a color cast with gray-world gains blended by strength in 0..1."""
+    image(img)
+    strength = np.clip(finite(strength, "strength"), 0, 1)
+    if img.ndim == 2 or strength == 0:
+        return img.copy()
+    means = img.mean(axis=(0, 1))
+    # A missing channel cannot be recovered. Limit gains to avoid extreme clipping.
+    gains = np.divide(means.mean(), means, out=np.ones_like(means), where=means > 0)
+    return uint8(img * (1 + strength * (np.clip(gains, 0.5, 2.0) - 1)))
+
+
 def clahe(img: np.ndarray, clip: float = 2.0, tile: int = 8) -> np.ndarray:
     """Adaptive equalization with clip>0 and tile-by-tile grid; color uses LAB L only."""
     image(img)

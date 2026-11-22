@@ -63,7 +63,7 @@ def test_registry_schema():
                 "contrast_stretch", "gamma", "negative", "box", "gaussian", "median",
                 "laplacian", "sobel", "equalize", "threshold", "erode", "dilate", "opening",
                 "closing", "clahe", "unsharp", "canny", "add_noise", "sepia", "bilateral",
-                "spectrum", "frequency_filter"}
+                "white_balance", "spectrum", "frequency_filter"}
     assert {op.id for op in OPERATIONS} == expected
     assert len(OPERATIONS) == len(expected)
     groups = {"A Basics", "B Affine", "C Intensity", "D Spatial Filters",

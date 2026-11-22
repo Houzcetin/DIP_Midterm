@@ -11,7 +11,9 @@ from PySide6.QtWidgets import (
 
 from core.samples import SAMPLES
 from core.state import ImageState
+from ops import auto
 from ops.registry import OPERATIONS, get_op
+from ui.auto_report import AutoReportDialog
 from ui.histogram_view import HistogramView
 from ui.frequency_view import FrequencyView
 from ui.history_panel import HistoryPanel
@@ -72,6 +74,7 @@ class MainWindow(QMainWindow):
         self._preview_image = None
         self._histogram_dialog = None
         self._frequency_dialog = None
+        self.auto_report_dialog = None
         self._stretch_hint_shown = False
         self.state = ImageState()
         self.original_view = ImageView()
@@ -100,6 +103,7 @@ class MainWindow(QMainWindow):
         self.ops_panel.previewCancelled.connect(self._clear_preview)
         self.ops_panel.paramsChanged.connect(self._update_frequency_view)
         self.ops_panel.resetRequested.connect(self.reset_image)
+        self.ops_panel.autoEnhanceRequested.connect(self.auto_enhance)
         self.themeChanged.connect(self._show_member)
         self._show_member(self._theme)
 
@@ -190,6 +194,8 @@ class MainWindow(QMainWindow):
         self.reset_action = add_action(edit_menu, "Reset to &Original", self.reset_image)
         self.reset_action.setShortcut("Ctrl+R")
         self.promote_action = add_action(edit_menu, "&Use Result as Original", self.set_result_as_original)
+        self.auto_enhance_action = add_action(edit_menu, "Auto Enhance...", self.auto_enhance)
+        self.auto_enhance_action.setShortcut("Ctrl+E")
 
         view_menu = add_menu(self.menuBar(), "&View")
         self._zoom_actions = []
@@ -274,6 +280,8 @@ class MainWindow(QMainWindow):
             self._dialog_histogram.retranslate()
         if self._frequency_dialog is not None:
             self._frequency_dialog.retranslate()
+        if self.auto_report_dialog is not None:
+            self.auto_report_dialog.retranslate()
         self._update_history()
         self._render_status()
 
@@ -443,10 +451,37 @@ class MainWindow(QMainWindow):
         except Exception as error:
             self._show_file_error("Could not save image: {path}", path, error)
 
-    def apply_operation(self, op_id, params):
+    def auto_enhance(self) -> None:
+        if not self.state.has_image():
+            return
+        # Compare and preview are temporary views of the current history step.
+        with QSignalBlocker(self.compare_action):
+            self.compare_action.setChecked(False)
+        self._clear_preview()
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            result = auto.run(self.state.current)
+        except Exception:
+            _LOG.debug("Auto Enhance failed", exc_info=True)
+            self._show_status("Auto Enhance could not process this image.", 5000)
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        for entry in result.steps:
+            if not self.apply_operation(entry.step.op_id, entry.step.params, result=entry.output):
+                return
+        if self.auto_report_dialog is None:
+            self.auto_report_dialog = AutoReportDialog(self, self._localized_history_label)
+        self.auto_report_dialog.set_result(result)
+        self.auto_report_dialog.show()
+        self.auto_report_dialog.raise_()
+        self.auto_report_dialog.activateWindow()
+
+    def apply_operation(self, op_id, params, *, result=None) -> bool:
         self.ops_panel.cancel_pending_preview()
         if not self._require_image():
-            return
+            return False
 
         op = None
         try:
@@ -454,7 +489,8 @@ class MainWindow(QMainWindow):
             if not op.live:
                 QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
-                result = op.func(self.state.current, **params)
+                if result is None:
+                    result = op.func(self.state.current, **params)
                 self.state.apply(op.label, result, params=params)
             finally:
                 if not op.live:
@@ -465,8 +501,9 @@ class MainWindow(QMainWindow):
             operation = tr(op.label) if op is not None else op_id
             QMessageBox.warning(self, tr("Operation failed"), tr("Could not apply {operation}.").format(
                 operation=operation))
-            return
+            return False
         self.refresh()
+        return True
 
     def preview_operation(self, op_id, params):
         if not self.state.has_image():
@@ -522,6 +559,8 @@ class MainWindow(QMainWindow):
         self.undo_action.setEnabled(self.state.can_undo())
         self.redo_action.setEnabled(self.state.can_redo())
         self.reset_action.setEnabled(self.state.has_image())
+        self.auto_enhance_action.setEnabled(self.state.has_image())
+        self.ops_panel.auto_enhance_button.setEnabled(self.state.has_image())
         self.promote_action.setEnabled(self.state.can_undo() or self.state.can_redo())
         for action in (*self._zoom_actions, self.compare_action, self.wipe_action):
             action.setEnabled(self.state.has_image())

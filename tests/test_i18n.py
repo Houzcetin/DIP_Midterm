@@ -2,6 +2,7 @@
 
 import re
 
+import numpy as np
 import pytest
 from PySide6.QtCore import QSettings, QTimer
 from PySide6.QtGui import QAction
@@ -153,6 +154,23 @@ def test_turkish_catalog_covers_window_dialogs_and_views(create_window, settings
     assert window.statusBar().currentMessage() == "boyutlar farklı — özgün görüntü sonuca uyarlandı"
     window.compare_action.setChecked(True)
     assert window._result_box.title() == "Sonuç — Özgün Görüntü gösteriliyor"
+    _, x = np.indices((64, 96))
+    gray = np.where(x % 24 < 12, 150, 52).astype(np.uint8)
+    cast = np.stack((gray // 2, gray, gray + 50), axis=-1)
+    window.state.load_array(cast, "renk.png")
+    window.refresh()
+    assert window.auto_enhance_action.text() == "Otomatik İyileştirme..."
+    assert window.ops_panel.auto_enhance_button.text() == "Otomatik İyileştirme"
+    window.auto_enhance_action.trigger()
+    report = window.auto_report_dialog
+    assert report.windowTitle() == "Otomatik İyileştirme Raporu"
+    for text in ("Tespit edilenler", "Uygulanan adımlar", "Önce → Sonra",
+                 "Beyaz dengesi (Düzeltme düzeyi=1.0)", "Kanal ortalamaları arasındaki dengesizliği"):
+        assert text in report.text()
+    assert_turkish(widget_texts(report))
+    window.set_language("en")
+    assert "White balance (Strength=1.0)" in report.text()
+    window.set_language("tr")
     assert_turkish(widget_texts(window))
     assert missing_keys == set()
 

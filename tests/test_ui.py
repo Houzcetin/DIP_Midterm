@@ -95,9 +95,9 @@ def test_basics_quick_buttons(loaded_window):
     window.ops_panel.resetRequested.connect(lambda: resets.append(True))
     buttons = quick.findChildren(QPushButton)
     assert [button.text() for button in buttons] == [
-        "Grayscale", "Flip H", "Flip V", "Rotate 90° CW", "Rotate 90° CCW", "Reset",
+        "Auto Enhance", "Grayscale", "Flip H", "Flip V", "Rotate 90° CW", "Rotate 90° CCW", "Reset",
     ]
-    for button in buttons:
+    for button in buttons[1:]:
         button.click()
 
     assert requests == [

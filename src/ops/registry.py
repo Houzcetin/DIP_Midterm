@@ -127,6 +127,9 @@ OPERATIONS: list[OperationSpec] = [
     OperationSpec("closing", "F Morphology", "Closing", morphology.closing,
                   [_KERNEL, _SHAPE, _ITERATIONS], live=True),
 
+    OperationSpec("white_balance", "Extras", "White balance", extras.white_balance, [
+        ParamSpec("strength", "Strength", "float", 1.0, 0.0, 1.0, 0.1,
+                  tooltip="Blend gray-world color correction from 0 (off) to 1 (full).")], live=True),
     OperationSpec("clahe", "Extras", "CLAHE", extras.clahe, [
         ParamSpec("clip", "Clip limit", "float", 2.0, 0.1, 10.0, 0.1,
                   tooltip="Contrast limit; color equalizes LAB lightness only."),

@@ -101,10 +101,10 @@ def feature_checklist():
          "Drag & drop, recent files, eight sample images",
          "Histogram dock and window (B/G/R)",
          "Use Result as Original; 6 themes with pixel-art figures"),
-        ("FFT spectrum and frequency filters",
-         "Frequency Inspector (Ctrl+F)",
+        ("FFT filters and Frequency Inspector (Ctrl+F)",
+         "Auto Enhance with measurements and undoable steps",
          "CLAHE, unsharp mask, Canny",
-         "Noise generator, sepia, bilateral filter",
+         "Noise, sepia, bilateral filter, white balance",
          "English/Turkish UI, shortcuts, Unicode paths",
          "Automated tests (pytest)"),
     )
@@ -148,6 +148,7 @@ def parameter_table():
         (("threshold",), (("method", "Method"), ("t", "Global cutoff"), ("invert", "Invert"))),
         (("erode", "dilate", "opening", "closing"),
          (("k", "Kernel width"), ("shape", "Shape"), ("iterations", "Iterations"))),
+        (("white_balance",), (("strength", "Strength"),)),
         (("clahe",), (("clip", "Clip limit"), ("tile", "Tiles per axis"))),
         (("unsharp",), (("k", "Blur kernel"), ("amount", "Amount"))),
         (("canny",), (("t1", "Lower threshold"), ("t2", "Upper threshold"))),
@@ -209,7 +210,7 @@ operation in the left dock, click Apply to keep it, then use File → Save Resul
 Gaussian sigma 0 derives the blur from its kernel width. Gamma above 1 darkens the image.</p>
 <h2>4. Shortcuts</h2>
 <p>Ctrl+O Open · Ctrl+S Save · Ctrl+Z Undo · Ctrl+Y Redo · Ctrl+R Reset · Ctrl+0 Fit · Ctrl+1 100%
-· Space Compare · Ctrl+B Wipe · Ctrl+F Frequency Inspector</p>
+· Space Compare · Ctrl+B Wipe · Ctrl+F Frequency Inspector · Ctrl+E Auto Enhance</p>
 <h2>5. Known limitations</h2>
 <p>Processing is 8-bit. Loading normalizes 16-bit images to 8-bit and discards alpha. Laplacian,
 Sobel, Canny, threshold and FFT spectrum produce grayscale output. History keeps up to 30 snapshots in RAM,
