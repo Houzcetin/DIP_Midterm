@@ -12,6 +12,7 @@ from matplotlib.patches import Polygon
 from matplotlib.ticker import MaxNLocator
 
 from ops.histogram import compute_hist
+from ui.i18n import tr
 from ui.themes import Theme, get_theme
 
 
@@ -32,8 +33,7 @@ class HistogramView(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.canvas)
-        for ax, title in zip(self.axes, ("Original", "Result")):
-            ax.set_title(title, fontsize=10)
+        for ax in self.axes:
             # Pad x so spikes at 0 and 255 (e.g. binary images) are not hidden by the spines.
             ax.set(xlim=(-4, 259), ylim=(0, 1), xticks=[0, 64, 128, 192, 255])
             ax.tick_params(labelsize=8, length=3)
@@ -48,7 +48,15 @@ class HistogramView(QWidget):
                                       linewidth=1, alpha=0.75, visible=False)[0]
                      for channel, color in self._COLORS.items()}
             self._artists.append((fill, lines))
+        self.retranslate()
         self.apply_theme(theme or get_theme(None))
+
+    def retranslate(self):
+        for ax, title in zip(self.axes, ("Original", "Result")):
+            ax.set_title(tr(title), fontsize=10)
+            ax.set_ylabel(tr("Pixel count"), fontsize=8)
+        self.axes[-1].set_xlabel(tr("Intensity"), fontsize=8)
+        self.canvas.draw_idle()
 
     def apply_theme(self, theme: Theme) -> None:
         """Recolor the histogram chrome and grayscale fill in place."""
@@ -56,6 +64,8 @@ class HistogramView(QWidget):
         for ax, (fill, _) in zip(self.axes, self._artists):
             ax.set_facecolor(theme.base)
             ax.title.set_color(theme.text)
+            ax.xaxis.label.set_color(theme.muted_text)
+            ax.yaxis.label.set_color(theme.muted_text)
             ax.tick_params(colors=theme.muted_text, grid_color=theme.button)
             for spine in ax.spines.values():
                 spine.set_color(theme.border)

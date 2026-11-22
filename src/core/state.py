@@ -11,7 +11,7 @@ class ImageState:
     def __init__(self):
         self.original = None
         self.path = None
-        self._history: list[tuple[str, np.ndarray]] = []
+        self._history: list[tuple[str, np.ndarray, dict]] = []
         self._index = -1
 
     @property
@@ -31,7 +31,7 @@ class ImageState:
         data = np.fromfile(path, dtype=np.uint8)
         img = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
         if img is None:
-            raise ValueError(f"Görüntü okunamadı: {path}")
+            raise ValueError(f"Could not read image: {path}")
         self.load_array(img, path)
 
     def load_array(self, img, name):
@@ -52,18 +52,18 @@ class ImageState:
         ext = os.path.splitext(path)[1] or ".png"
         ok, buf = cv2.imencode(ext, self.current)
         if not ok:
-            raise ValueError("Görüntü kaydedilemedi.")
+            raise ValueError("Could not encode image.")
         buf.tofile(path)
 
     def reset(self):
         if self.has_image():
             self.apply("Reset", self.original)
 
-    def apply(self, label, img):
-        """Append a snapshot and discard any redo steps."""
+    def apply(self, label, img, *, params=None):
+        """Append a snapshot with its operation parameters and discard redo steps."""
         if not self.has_image():
             raise ValueError("Load an image before applying a result.")
-        step = (label, img.copy())
+        step = (label, img.copy(), dict(params or {}))
         del self._history[self._index + 1:]
         self._history.append(step)
         if len(self._history) > self.MAX_HISTORY:
@@ -86,8 +86,14 @@ class ImageState:
         if 0 <= index < len(self._history):
             self._index = index
 
-    def history_labels(self):
-        return [label for label, _ in self._history]
+    @staticmethod
+    def _format_label(label, params):
+        summary = ", ".join(f"{key}={value}" for key, value in params.items())
+        return f"{label} ({summary})" if summary else label
+
+    def history_labels(self, format_label=None):
+        format_label = format_label or self._format_label
+        return [format_label(label, params) for label, _, params in self._history]
 
     def set_result_as_original(self):
         if self.has_image():
@@ -95,5 +101,5 @@ class ImageState:
 
     def _start_history(self, img):
         self.original = img
-        self._history = [("Original", img)]
+        self._history = [("Original", img, {})]
         self._index = 0

@@ -1,6 +1,7 @@
 """Build the operations dock controls from registry metadata."""
 
 from decimal import Decimal
+from functools import partial
 from html import escape
 from math import floor
 
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from ops.registry import OPERATIONS, OperationSpec, ParamSpec
 from ui import avatars
+from ui.i18n import tr
 
 
 GROUPS = (
@@ -37,6 +39,10 @@ CHOICE_LABELS = {
 }
 
 
+def choice_label(value: str) -> str:
+    return CHOICE_LABELS.get(value, value.capitalize())
+
+
 class OpsPanel(QWidget):
     """Expose the operation forms and their preview and apply signals."""
 
@@ -52,6 +58,8 @@ class OpsPanel(QWidget):
         super().__init__()
         self.setMinimumWidth(300)
 
+        self._texts = []
+        self._member = None
         self._param_readers = {}
         self._pending_preview = None
         self._preview_timer = QTimer(self)
@@ -65,8 +73,17 @@ class OpsPanel(QWidget):
         layout.addWidget(self._member_header())
         layout.addWidget(self.toolbox)
         for group in GROUPS:
-            self.toolbox.addItem(self._group_page(group), group)
+            index = self.toolbox.addItem(self._group_page(group), "")
+            self._texts.append((partial(self.toolbox.setItemText, index), group))
         self.toolbox.currentChanged.connect(self._page_changed)
+        self.retranslate()
+
+    def retranslate(self):
+        """Update text without changing control values or the current page."""
+        for setter, source in self._texts:
+            setter(tr(source))
+        if self._member is not None:
+            self._update_member_name()
 
     def _member_header(self):
         header = QWidget()
@@ -83,6 +100,7 @@ class OpsPanel(QWidget):
 
     def set_member(self, theme):
         """Show the selected theme's member head and name above the operations."""
+        self._member = theme
         try:
             face = avatars.head(theme.id)
         except FileNotFoundError:
@@ -91,9 +109,14 @@ class OpsPanel(QWidget):
             self.member_figure.setPixmap(QPixmap.fromImage(face.scaled(
                 self._HEADER_ICON, self._HEADER_ICON, Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation)))
+        self._update_member_name()
+
+    def _update_member_name(self):
+        theme = self._member
+        description = tr("{color} theme").format(color=tr(theme.color_name))
         self.member_name.setText(
             f'<b style="color:{theme.accent}; font-size:13pt">{escape(theme.member)}</b>'
-            f'<br><span style="color:{theme.muted_text}">{escape(theme.color_name)} theme</span>')
+            f'<br><span style="color:{theme.muted_text}">{escape(description)}</span>')
 
     def current_params(self, op_id: str) -> dict:
         """Read the current control values for an operation by its registry ID."""
@@ -115,7 +138,8 @@ class OpsPanel(QWidget):
         return scroll
 
     def _quick_actions(self):
-        box = QGroupBox("Quick actions")
+        box = QGroupBox()
+        self._texts.append((box.setTitle, "Quick actions"))
         grid = QGridLayout(box)
         for i, (label, op_id, params) in enumerate((
             ("Grayscale", "to_grayscale", {}),
@@ -124,20 +148,23 @@ class OpsPanel(QWidget):
             ("Rotate 90° CW", "rotate90", {"k": 1}),
             ("Rotate 90° CCW", "rotate90", {"k": -1}),
         )):
-            button = QPushButton(label)
+            button = QPushButton()
+            self._texts.append((button.setText, label))
             button.clicked.connect(
                 lambda checked=False, op_id=op_id, params=params:
                 self.applyRequested.emit(op_id, params)
             )
-            grid.addWidget(button, i // 3, i % 3)
-        reset = QPushButton("Reset")
-        reset.setToolTip("Return to the original image (undoable, Ctrl+R).")
+            grid.addWidget(button, i // 2, i % 2)
+        reset = QPushButton()
+        self._texts.extend(((reset.setText, "Reset"),
+                            (reset.setToolTip, "Return to the original image (undoable, Ctrl+R).")))
         reset.clicked.connect(self.resetRequested.emit)
-        grid.addWidget(reset, 1, 2)
+        grid.addWidget(reset, 2, 1)
         return box
 
     def _operation_box(self, op: OperationSpec):
-        box = QGroupBox(op.label)
+        box = QGroupBox()
+        self._texts.append((box.setTitle, op.label))
         layout = QVBoxLayout(box)
         form = QFormLayout()
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
@@ -153,14 +180,15 @@ class OpsPanel(QWidget):
 
         for param in op.params:
             control, read, changed = self._parameter_control(param)
-            label = QLabel(param.label)
-            label.setToolTip(param.tooltip)
-            control.setToolTip(param.tooltip)
+            label = QLabel()
+            self._texts.extend(((label.setText, param.label), (label.setToolTip, param.tooltip),
+                                (control.setToolTip, param.tooltip)))
             form.addRow(label, control)
             readers[param.name] = read
             changed.connect(params_changed)
 
-        apply = QPushButton("Apply")
+        apply = QPushButton()
+        self._texts.append((apply.setText, "Apply"))
         apply.clicked.connect(lambda: self.applyRequested.emit(op.id, self.current_params(op.id)))
         layout.addWidget(apply, alignment=Qt.AlignmentFlag.AlignRight)
         return box
@@ -168,8 +196,9 @@ class OpsPanel(QWidget):
     def _parameter_control(self, param: ParamSpec):
         if param.kind == "choice":
             combo = QComboBox()
-            for value in param.choices:
-                combo.addItem(CHOICE_LABELS.get(value, value.capitalize()), value)
+            for index, value in enumerate(param.choices):
+                combo.addItem("", value)
+                self._texts.append((partial(combo.setItemText, index), choice_label(value)))
             combo.setCurrentIndex(combo.findData(param.default))
             return combo, combo.currentData, combo.currentIndexChanged
         if param.kind == "bool":
@@ -190,11 +219,11 @@ class OpsPanel(QWidget):
         spin.setRange(minimum, maximum)
         spin.setSingleStep(step)
         spin.setKeyboardTracking(False)
-        spin.setToolTip(param.tooltip)
+        self._texts.append((spin.setToolTip, param.tooltip))
 
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(0, round((maximum - minimum) / step))
-        slider.setToolTip(param.tooltip)
+        self._texts.append((slider.setToolTip, param.tooltip))
 
         def sync_slider(value):
             # Anchor the grid to the minimum so odd kernels stay odd.

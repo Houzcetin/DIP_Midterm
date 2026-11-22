@@ -25,6 +25,7 @@ from ops.registry import OPERATIONS
 def capture_ui(app):
     with TemporaryDirectory(prefix="dip-settings-") as folder:
         settings = QSettings(str(Path(folder) / "readme.ini"), QSettings.Format.IniFormat)
+        settings.setValue("language", "en")
         window = MainWindow(settings=settings)
         window.resize(1500, 850)
         window.show()

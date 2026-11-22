@@ -57,8 +57,8 @@ def test_registry_order_labels_and_default():
     assert list(THEMES) == ["mina", "esin", "zeynep", "lidya", "sueda", "hilal"]
     assert [theme.id for theme in THEMES.values()] == list(THEMES)
     assert [theme.label for theme in THEMES.values()] == [
-        "Mina — Kırmızı", "Esin — Sarı", "Zeynep Sude — Mavi",
-        "Lidya — Pembe", "Sueda — Yeşil", "Hilal — Mor",
+        "Mina — Red", "Esin — Yellow", "Zeynep Sude — Blue",
+        "Lidya — Pink", "Sueda — Green", "Hilal — Purple",
     ]
     assert DEFAULT_THEME == "zeynep"
     assert get_theme(None) is get_theme("unknown") is THEMES[DEFAULT_THEME]

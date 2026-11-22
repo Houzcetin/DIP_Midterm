@@ -7,6 +7,7 @@ from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPalette, QPen, QPixma
 from PySide6.QtWidgets import QApplication
 
 from ui import avatars
+from ui.i18n import tr
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,7 @@ class Theme:
 
     @property
     def label(self) -> str:
-        return f"{self.member} — {self.color_name}"
+        return f"{self.member} — {tr(self.color_name)}"
 
 
 def mix(c1: str, c2: str, t: float) -> str:
@@ -68,12 +69,12 @@ def _make_theme(theme_id: str, member: str, color_name: str, accent: str, on_acc
 THEMES: dict[str, Theme] = {
     spec[0]: _make_theme(*spec)
     for spec in (
-        ("mina", "Mina", "Kırmızı", "#E5484D", "#141414"),
-        ("esin", "Esin", "Sarı", "#F5C518", "#1B1B1B"),
-        ("zeynep", "Zeynep Sude", "Mavi", "#3B82F6", "#1B1B1B"),
-        ("lidya", "Lidya", "Pembe", "#EC6BB4", "#1B1B1B"),
-        ("sueda", "Sueda", "Yeşil", "#2FB86A", "#1B1B1B"),
-        ("hilal", "Hilal", "Mor", "#9B6BF2", "#1B1B1B"),
+        ("mina", "Mina", "Red", "#E5484D", "#141414"),
+        ("esin", "Esin", "Yellow", "#F5C518", "#1B1B1B"),
+        ("zeynep", "Zeynep Sude", "Blue", "#3B82F6", "#1B1B1B"),
+        ("lidya", "Lidya", "Pink", "#EC6BB4", "#1B1B1B"),
+        ("sueda", "Sueda", "Green", "#2FB86A", "#1B1B1B"),
+        ("hilal", "Hilal", "Purple", "#9B6BF2", "#1B1B1B"),
     )
 }
 DEFAULT_THEME = "zeynep"

@@ -7,6 +7,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
 from ops.frequency import filter_mask, frequency_filter, spectrum
+from ui.i18n import tr
 from ui.themes import Theme, get_theme
 
 
@@ -15,7 +16,6 @@ class FrequencyView(QDialog):
 
     def __init__(self, parent=None, *, theme: Theme | None = None):
         super().__init__(parent)
-        self.setWindowTitle("Frequency Inspector")
         self.resize(920, 390)
         self.setMinimumSize(580, 260)
         self._theme = theme or get_theme(None)
@@ -25,9 +25,9 @@ class FrequencyView(QDialog):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.canvas)
-        caption = QLabel("Center = low frequencies · Edges = high frequencies")
-        caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(caption)
+        self._caption = QLabel()
+        self._caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._caption)
 
         self._image = None
         self._params = None
@@ -38,6 +38,15 @@ class FrequencyView(QDialog):
         self._timer.setInterval(160)
         self._timer.timeout.connect(self._render)
         self._render()
+
+    def retranslate(self):
+        self.setWindowTitle(tr("Frequency Inspector"))
+        self._caption.setText(tr("Center = low frequencies · Edges = high frequencies"))
+        for ax, title in zip(self.axes, self._TITLES):
+            ax.set_title(tr(title), fontsize=10)
+        if self._empty_label is not None:
+            self._empty_label.set_text(tr("Open an image to start"))
+        self.canvas.draw_idle()
 
     def apply_theme(self, theme: Theme) -> None:
         """Recolor the figure and remember the theme when its axes are cleared."""
@@ -74,13 +83,14 @@ class FrequencyView(QDialog):
                 preview = preview[..., ::-1]  # Matplotlib displays RGB.
             images = [self._magnitude, mask, preview]
 
-        for ax, title, data, limit in zip(self.axes, self._TITLES, images, (255, 1, 255)):
+        for ax, data, limit in zip(self.axes, images, (255, 1, 255)):
             ax.clear()
-            ax.set_title(title, fontsize=10)
             ax.set(xticks=[], yticks=[])
             if data is not None:
                 ax.imshow(data, cmap="gray", vmin=0, vmax=limit)
+        self._empty_label = None
         if img is None:
-            self.axes[1].text(0.5, 0.5, "Open an image to start", ha="center", va="center",
-                              transform=self.axes[1].transAxes)
+            self._empty_label = self.axes[1].text(0.5, 0.5, "", ha="center", va="center",
+                                                  transform=self.axes[1].transAxes)
+        self.retranslate()
         self.apply_theme(self._theme)

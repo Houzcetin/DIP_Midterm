@@ -5,6 +5,8 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
+from ui.i18n import tr
+
 
 def to_qpixmap(img):
     """Convert an OpenCV grayscale or BGR array to an independent QPixmap."""
@@ -78,7 +80,7 @@ class ImageView(QWidget):
         return self._pixmap
 
     def text(self):
-        return "No image" if self._image is None else ""
+        return tr("No image") if self._image is None else ""
 
     @property
     def zoom_factor(self):
@@ -172,8 +174,8 @@ class ImageView(QWidget):
         painter.drawEllipse(center, radius, radius)
         painter.drawText(QRectF(x - radius, center.y() - radius, 2 * radius, 2 * radius),
                          Qt.AlignmentFlag.AlignCenter, "◀▶")
-        self._paint_wipe_label(painter, before, "Before")
-        self._paint_wipe_label(painter, after, "After", align_right=True)
+        self._paint_wipe_label(painter, before, tr("Before"))
+        self._paint_wipe_label(painter, after, tr("After"), align_right=True)
 
     @staticmethod
     def _paint_wipe_label(painter, side, label, align_right=False):

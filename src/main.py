@@ -16,7 +16,7 @@ def configure_appearance(app, theme_id=None):
 
 
 def run_selftest(app, out_dir):
-    """Exercise every operation and theme headlessly and write a report and screenshot.
+    """Exercise operations, themes, and languages headlessly and write a report and screenshot.
 
     Used to verify the frozen exe: `DIP_Midterm.exe --selftest <dir>`.
     A windowed exe has no console, so results go to files in out_dir.
@@ -40,6 +40,9 @@ def run_selftest(app, out_dir):
         for theme_id in THEMES:
             window.set_theme(theme_id)
             app.processEvents()
+        for language in ("tr", "en"):
+            window.set_language(language)
+            app.processEvents()
         # Fails if the figure PNGs were not bundled into the exe.
         avatar_count = sum(not avatars.figure(member).isNull() for member in avatars.MEMBERS)
         window.set_theme(DEFAULT_THEME)
@@ -48,8 +51,8 @@ def run_selftest(app, out_dir):
         app.processEvents()
         window.histogram_view.canvas.draw()
         window.grab().save(str(out / "selftest.png"))
-        report.write_text(f"OK {len(OPERATIONS)} operations, "
-                          f"themes={len(THEMES)}, avatars={avatar_count}, history={len(window.state.history_labels())}\n",
+        report.write_text(f"OK {len(OPERATIONS)} operations, themes={len(THEMES)}, languages=2, "
+                          f"avatars={avatar_count}, history={len(window.state.history_labels())}\n",
                           encoding="utf-8")
         return 0
     except Exception:
