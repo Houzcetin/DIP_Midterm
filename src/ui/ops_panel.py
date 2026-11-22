@@ -1,9 +1,11 @@
 """Build the operations dock controls from registry metadata."""
 
 from decimal import Decimal
+from html import escape
 from math import floor
 
 from PySide6.QtCore import QSignalBlocker, Qt, QTimer, Signal
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGridLayout, QGroupBox,
     QHBoxLayout, QLabel, QPushButton, QScrollArea, QSlider, QSpinBox,
@@ -11,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from ops.registry import OPERATIONS, OperationSpec, ParamSpec
+from ui import avatars
 
 
 GROUPS = (
@@ -43,6 +46,8 @@ class OpsPanel(QWidget):
     previewCancelled = Signal()
     resetRequested = Signal()
 
+    _HEADER_ICON = 48
+
     def __init__(self):
         super().__init__()
         self.setMinimumWidth(300)
@@ -57,10 +62,38 @@ class OpsPanel(QWidget):
         self.toolbox = QToolBox()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._member_header())
         layout.addWidget(self.toolbox)
         for group in GROUPS:
             self.toolbox.addItem(self._group_page(group), group)
         self.toolbox.currentChanged.connect(self._page_changed)
+
+    def _member_header(self):
+        header = QWidget()
+        header.setObjectName("memberHeader")
+        row = QHBoxLayout(header)
+        row.setContentsMargins(8, 6, 8, 6)
+        self.member_figure = QLabel()
+        self.member_figure.setFixedSize(self._HEADER_ICON, self._HEADER_ICON)
+        self.member_name = QLabel()
+        self.member_name.setTextFormat(Qt.TextFormat.RichText)
+        row.addWidget(self.member_figure)
+        row.addWidget(self.member_name, 1)
+        return header
+
+    def set_member(self, theme):
+        """Show the selected theme's member head and name above the operations."""
+        try:
+            face = avatars.head(theme.id)
+        except FileNotFoundError:
+            self.member_figure.clear()
+        else:
+            self.member_figure.setPixmap(QPixmap.fromImage(face.scaled(
+                self._HEADER_ICON, self._HEADER_ICON, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)))
+        self.member_name.setText(
+            f'<b style="color:{theme.accent}; font-size:13pt">{escape(theme.member)}</b>'
+            f'<br><span style="color:{theme.muted_text}">{escape(theme.color_name)} theme</span>')
 
     def current_params(self, op_id: str) -> dict:
         """Read the current control values for an operation by its registry ID."""

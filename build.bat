@@ -10,6 +10,7 @@ if not exist ".venv\Scripts\python.exe" (
 rem The histogram uses QtAgg, which needs the Qt and Agg backend modules.
 ".venv\Scripts\python.exe" -m PyInstaller --noconfirm --onefile --windowed ^
     --name DIP_Midterm --paths src --additional-hooks-dir tools\pyinstaller_hooks ^
+    --add-data "src\ui\assets\avatars;ui\assets\avatars" ^
     --exclude-module PySide6.QtWebEngineCore ^
     --exclude-module PySide6.QtWebEngineWidgets ^
     --exclude-module PySide6.QtWebEngineQuick ^

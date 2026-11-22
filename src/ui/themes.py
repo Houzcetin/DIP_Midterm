@@ -6,6 +6,8 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import QApplication
 
+from ui import avatars
+
 
 @dataclass(frozen=True)
 class Theme:
@@ -204,6 +206,22 @@ def apply_theme(app: QApplication, theme: Theme) -> None:
 
 
 def app_icon(theme: Theme) -> QIcon:
+    """Use the member's pixel-art head, or a rounded DIP badge if it is missing."""
+    try:
+        return avatars.head_icon(theme.id)
+    except FileNotFoundError:
+        return _badge_icon(theme)
+
+
+def theme_icon(theme: Theme) -> QIcon:
+    """Menu icon for a theme: the member's head, or the accent swatch as fallback."""
+    try:
+        return avatars.head_icon(theme.id)
+    except FileNotFoundError:
+        return swatch_icon(theme)
+
+
+def _badge_icon(theme: Theme) -> QIcon:
     """Paint the rounded DIP icon in the selected accent."""
     pixmap = QPixmap(64, 64)
     pixmap.fill(Qt.GlobalColor.transparent)

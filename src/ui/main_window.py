@@ -16,7 +16,8 @@ from ui.frequency_view import FrequencyView
 from ui.history_panel import HistoryPanel
 from ui.image_view import ImageView
 from ui.ops_panel import OpsPanel
-from ui.themes import THEMES, apply_theme, get_theme, swatch_icon
+from ui import avatars
+from ui.themes import THEMES, apply_theme, get_theme, theme_icon
 
 
 class _EqualizingHandle(QSplitterHandle):
@@ -84,6 +85,8 @@ class MainWindow(QMainWindow):
         self.ops_panel.previewCancelled.connect(self._clear_preview)
         self.ops_panel.paramsChanged.connect(self._update_frequency_view)
         self.ops_panel.resetRequested.connect(self.reset_image)
+        self.themeChanged.connect(self._show_member)
+        self._show_member(self._theme)
 
         self.histogram_view = HistogramView(theme=self._theme)
         self.themeChanged.connect(self.histogram_view.apply_theme)
@@ -190,7 +193,7 @@ class MainWindow(QMainWindow):
         theme_group.setExclusive(True)
         self._theme_actions = {}
         for theme in THEMES.values():
-            action = theme_menu.addAction(swatch_icon(theme), theme.label)
+            action = theme_menu.addAction(theme_icon(theme), theme.label)
             action.setCheckable(True)
             action.setData(theme.id)
             theme_group.addAction(action)
@@ -210,6 +213,15 @@ class MainWindow(QMainWindow):
         self._settings.setValue("theme", theme.id)
         self._theme_actions[theme.id].setChecked(True)
         self.themeChanged.emit(theme)
+
+    def _show_member(self, theme):
+        """Put the theme member's figure in the empty panel and the operations header."""
+        self.ops_panel.set_member(theme)
+        try:
+            figure = avatars.figure(theme.id)
+        except FileNotFoundError:
+            figure = None
+        self.original_view.set_placeholder_figure(figure)
 
     def open_image(self):
         path, _ = QFileDialog.getOpenFileName(

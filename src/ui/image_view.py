@@ -38,6 +38,13 @@ class ImageView(QWidget):
         self._relative_to_fit = True
         self._center = QPointF(0.5, 0.5)
         self._drag_position = None
+        self._placeholder = None
+
+    def set_placeholder_figure(self, image):
+        """Show a pixel-art figure (QImage or None) while no image is loaded."""
+        self._placeholder = image
+        if self._pixmap is None:
+            self.update()
 
     def set_image(self, img):
         """Show an image snapshot while keeping the comparison viewport."""
@@ -117,12 +124,26 @@ class ImageView(QWidget):
             return x, y, value
         return None
 
+    def _paint_placeholder(self, painter):
+        painter.setPen(QColor("#a0a0a0"))
+        text_rect = QRectF(self.rect())
+        if self._placeholder is not None and not self._placeholder.isNull():
+            line = painter.fontMetrics().height()
+            height = min(self.height() * 0.62, self.height() - 3 * line - 16)
+            width = height * self._placeholder.width() / self._placeholder.height()
+            if height >= 64 and width <= self.width() - 16:
+                top = (self.height() - height - 2 * line) / 2
+                # Nearest-neighbour keeps the pixel art crisp.
+                painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
+                painter.drawImage(QRectF((self.width() - width) / 2, top, width, height), self._placeholder)
+                text_rect = QRectF(0, top + height + line * 0.5, self.width(), line * 1.5)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, self.text())
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor("#1e1e1e"))
         if self._pixmap is None:
-            painter.setPen(QColor("#a0a0a0"))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text())
+            self._paint_placeholder(painter)
             return
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, self.zoom_factor < 1)
         rect = self._image_rect()

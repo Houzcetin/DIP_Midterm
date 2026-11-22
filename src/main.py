@@ -4,6 +4,7 @@ import sys
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
+from ui import avatars
 from ui.main_window import MainWindow
 from ui.themes import DEFAULT_THEME, THEMES, apply_theme, get_theme
 
@@ -39,6 +40,8 @@ def run_selftest(app, out_dir):
         for theme_id in THEMES:
             window.set_theme(theme_id)
             app.processEvents()
+        # Fails if the figure PNGs were not bundled into the exe.
+        avatar_count = sum(not avatars.figure(member).isNull() for member in avatars.MEMBERS)
         window.set_theme(DEFAULT_THEME)
         window.apply_operation("gaussian", {"k": 5, "sigma": 0.0})
         window.apply_operation("equalize", {})
@@ -46,7 +49,7 @@ def run_selftest(app, out_dir):
         window.histogram_view.canvas.draw()
         window.grab().save(str(out / "selftest.png"))
         report.write_text(f"OK {len(OPERATIONS)} operations, "
-                          f"themes={len(THEMES)}, history={len(window.state.history_labels())}\n",
+                          f"themes={len(THEMES)}, avatars={avatar_count}, history={len(window.state.history_labels())}\n",
                           encoding="utf-8")
         return 0
     except Exception:
